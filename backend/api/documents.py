@@ -3,12 +3,16 @@ from typing import Optional
 from langchain_huggingface import HuggingFaceEmbeddings
 from file_processor import process_and_ingest_document
 from api.auth import verify_token
+from langchain_qdrant import FastEmbedSparse
 
 
 router = APIRouter()
 
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
+sparse_embedding_model = FastEmbedSparse(
+    model_name="Qdrant/bm25"
 )
 
 @router.post("/upload-doc")
@@ -23,6 +27,7 @@ async def upload_and_ingest(
                 file_obj=file.file,
                 filename=file.filename,
                 embedding_model=embedding_model,
+                sparse_embedding_model=sparse_embedding_model,
                 user_id=user_id
             )
             if success:

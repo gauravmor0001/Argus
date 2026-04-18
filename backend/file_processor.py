@@ -2,9 +2,9 @@ import os
 import shutil #used for high level file operations.
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_qdrant import QdrantVectorStore
+from langchain_qdrant import QdrantVectorStore, FastEmbedSparse
 
-def process_and_ingest_document(file_obj,filename,embedding_model,user_id,chunk_size=1000):
+def process_and_ingest_document(file_obj,filename,embedding_model,sparse_embedding_model,user_id,chunk_size=1000):
     temp_filename=f"temp_{filename}"
 
     try:
@@ -30,6 +30,8 @@ def process_and_ingest_document(file_obj,filename,embedding_model,user_id,chunk_
         QdrantVectorStore.from_documents(
             splits,
             embedding_model,
+            sparse_embedding=sparse_embedding_model, # Generates BM25 keywords for each chunk
+            retrieval_mode="HYBRID",
             url="http://localhost:6333",
             collection_name="learning-rag"
         )

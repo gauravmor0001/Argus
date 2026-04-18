@@ -3,7 +3,7 @@ from langchain_core.tools import tool
 # from langchain_community.tools import TavilySearchResults
 from langchain_tavily import TavilySearch 
 import wikipedia
-from langchain_qdrant import QdrantVectorStore
+from langchain_qdrant import QdrantVectorStore, FastEmbedSparse
 from langchain_huggingface import HuggingFaceEmbeddings
 from sentence_transformers import CrossEncoder 
 from langchain_core.runnables import RunnableConfig #secure back channel
@@ -13,6 +13,7 @@ from qdrant_client.http import models #we can not simply say filter using user_i
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
+sparse_embedding_model = FastEmbedSparse(model_name="Qdrant/bm25")
 reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2') #classification model (act as grader and gives score)
 
 @tool
@@ -60,13 +61,15 @@ def search_knowledge_base(query: str, config: RunnableConfig):
     """
     Use this tool to search for information inside the uploaded PDF documents or text files.
     Input should be a specific search query related to the documents.
-    Returns the relevant text snippets from the files using a Two-Stage Advanced RAG pipeline.
+    Returns the relevant text snippets from the files using a Hybrid (Dense+BM25) Advanced RAG pipeline.
     """
     user_id = config.get("configurable", {}).get("user_id")
     print(f"DEBUG: Searching Knowledge Base for: '{query}',user:{user_id}")
     try:
         vector_db = QdrantVectorStore.from_existing_collection(
             embedding=embedding_model,
+            sparse_embedding=sparse_embedding_model,
+            retrieval_mode="HYBRID",
             url="http://localhost:6333",
             collection_name="learning-rag"
         )

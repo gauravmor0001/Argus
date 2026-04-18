@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from database import UserDatabase
 from api.auth import verify_token
 
-import re #using it to find xml.
+import re #(regular expression)using it to find xml.
 import json
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage  #systemMessage is instruction to the model.
 from langchain_groq import ChatGroq
@@ -15,6 +15,8 @@ from langgraph.graph import StateGraph, MessagesState, END
 from langgraph.prebuilt import ToolNode, tools_condition 
 from mem0 import Memory
 from tools import tools_list
+from fastapi.responses import StreamingResponse 
+import uuid
 
 
 load_dotenv()
@@ -60,18 +62,27 @@ config = {
     }
 }
 
-print("DEBUG: Connecting to Memory...")
+print("DEBUG: Connecting to Mem0 Memory...")
 mem_client = Memory.from_config(config)
-
 def normalize_tool_calls(state: MessagesState):
     """Fixes Groq's XML tool formatting to match LangChain's JSON expectation."""
     last = state["messages"][-1]
-    # user dont call tools
     if not isinstance(last, AIMessage):
         return state
 
     content = last.content or ""
-    # It looks for "<function=", then captures the tool name, then captures the JSON arguments inside {}
+
+    # ── Groq hard failure: it literally says it failed ──
+    # This happens when tool call JSON is so broken Groq gives up
+    if "Failed to call a function" in content or "failed_generation" in content:
+        print("DEBUG: Groq tool call generation failed — clearing bad tool_calls")
+        # Replace with a clean message that tells the agent to answer directly
+        state["messages"][-1] = AIMessage(
+            content="I encountered an issue using my tools. Let me answer based on what I know.",
+            tool_calls=[]
+        )
+        return {"messages": state["messages"]}
+
     match = re.search(r'<function=([a-zA-Z0-9_\-]+)\s*(\{[\s\S]*?\})?>', content)
     if not match:
         return state
@@ -85,8 +96,9 @@ def normalize_tool_calls(state: MessagesState):
 
     new_message = AIMessage(
         content=last.content,
-        tool_calls=[{"name": tool_name, "args": args}]
+        tool_calls=[{"name": tool_name, "args": args, "id": f"call_{uuid.uuid4().hex[:8]}"}]
     )
+    print(f"DEBUG normalize: tool={tool_name}, args={args}")
     state["messages"][-1] = new_message
     return {"messages": state["messages"]}
 
@@ -112,9 +124,53 @@ workflow.add_edge("tools", "agent")
 
 agent_app = workflow.compile()
 
+def extract_citations(messages):
+    """
+    Walks backwards through LangGraph messages looking for the web_search ToolMessage.
+    Parses out SOURCE_URL:: and SNIPPET:: lines we set in tools.py.
+    Returns a list of {url, snippet} dicts.
+    """
+    citations = []
+    for msg in messages:
+        # ToolMessage has a .name attribute equal to the tool that produced it
+        if hasattr(msg, 'name') and msg.name == 'web_search':
+            blocks = msg.content.split('\n\n---\n\n')
+            for block in blocks:
+                url, snippet = '', ''
+                for line in block.split('\n'):
+                    if line.startswith('SOURCE_URL::'):
+                        url = line.replace('SOURCE_URL::', '').strip()
+                    elif line.startswith('SNIPPET::'):
+                        snippet = line.replace('SNIPPET::', '').strip()
+                if url:
+                    citations.append({'url': url, 'snippet': snippet})
+    return citations
+
+def grade_answer(question: str, answer: str) -> str:
+    """
+    Sends a tiny grader prompt to the LLM.
+    Returns 'relevant' or 'not_relevant'.
+    This is a SEPARATE LLM call — the grader acts as a judge.
+    """
+    grader_prompt = (
+        f"You are a strict grader. A user asked a question and an AI gave an answer.\n\n"
+        f"Question: {question}\n"
+        f"Answer: {answer}\n\n"
+        f"Does this answer directly and completely address the question?\n"
+        f"Reply with ONLY one word — either 'relevant' or 'not_relevant'. Nothing else."
+    )
+    try:
+        result = llm.invoke([HumanMessage(content=grader_prompt)])
+        verdict = result.content.strip().lower()
+        print(f"DEBUG: Answer grader verdict: '{verdict}'")
+        # Guard against the LLM adding extra words
+        return 'relevant' if verdict == 'relevant' else 'not_relevant'
+    except Exception as e:
+        print(f"DEBUG: Grader failed: {e}")
+        return 'relevant'
 
 @router.get("/conversations")
-async def get_conversations(authorization: Optional[str] = Header(None)): #telling that look only in header it can be or can not be present if not dont crash.
+async def get_conversations(authorization: Optional[str] = Header(None)): #telling that look only in header(header can be none too), it can be or can not be present. if not, dont crash.
     """Fetches a list of all chat histories for the logged-in user."""
     user_id, username = verify_token(authorization)
     conversations = db.get_conversations(user_id)
@@ -182,7 +238,7 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         "- Call each tool AT MOST ONCE per user question.\n"
         "- NEVER call search_knowledge_base for general knowledge or news questions.\n"
         "- NEVER call web_search for questions about uploaded documents.\n"
-        "- Once you have tool results, answer immediately. Do NOT search again."
+        "- Once you have tool results, answer immediately. Do NOT search again." #will change this so we can get good resutls
     )
 
     if memories:
@@ -196,10 +252,13 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     try:
         final_state = agent_app.invoke(
             {"messages": input_messages},
-            config={"configurable": {"user_id": user_id}}
+            config={"configurable": {"user_id": user_id}} #this allows us to pass variables , we can use this in any tool without giving this info to llm.
         )
         
         ai_response = final_state["messages"][-1].content
+        citations = extract_citations(final_state["messages"])
+        quality = grade_answer(user_query, ai_response)
+        print(f"DEBUG: Citations found: {len(citations)}, Quality: {quality}")
 
        
         try:
@@ -213,10 +272,145 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         except Exception as mem_err:
             print(f"DEBUG: Failed to save to Mem0: {mem_err}")
         
-        return {"response": ai_response, "conversation_id": conv_id}
+        return {"response": ai_response,
+                 "conversation_id": conv_id,
+                 "citations": citations,        # e.g. [{"url": "...", "snippet": "..."}]
+                "quality": quality}
         
     except Exception as e:
         error_msg = str(e)
         if "rate_limit" in error_msg.lower() or "413" in error_msg:
             return {"response": "I am thinking too hard. Please wait 30 seconds."}
         return {"response": f"System Error: {error_msg}"}
+    
+
+@router.post("/chat/stream")
+async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str] = Header(None)):
+    user_id, username = verify_token(authorization)
+    user_query = request.message
+    conv_id = request.conversation_id
+
+    # Create new conversation if none provided
+    if not conv_id:
+        conv_id = db.create_conversation(user_id)
+        if not conv_id:
+            raise HTTPException(status_code=500, detail="Failed to create conversation")
+
+    # Same memory retrieval as your existing /chat
+    memories = []
+    try:
+        search_results = mem_client.search(query=user_query, user_id=user_id, limit=3)
+        if search_results:
+            raw = search_results if isinstance(search_results, list) else search_results.get("results", [])
+            for mem in raw:
+                if mem.get('score', 0) > 0.7:
+                    memories.append(mem.get('memory', str(mem))[:200])
+    except Exception as e:
+        print(f"DEBUG: Memory Error: {e}")
+
+    base_prompt = (
+        "You are a helpful assistant. "
+        "You have three tools available:\n"
+        "1. 'search_knowledge_base' — use ONLY for questions about uploaded documents, resumes, or personal files.\n"
+        "2. 'web_search' — use ONLY for current events, news, or real-time information.\n\n"
+        "3. 'get_current_time'- return the time and date"
+        "STRICT RULES:\n"
+        "- Call each tool AT MOST ONCE per user question.\n"
+        "- NEVER call search_knowledge_base for general knowledge or news questions.\n"
+        "- NEVER call web_search for questions about uploaded documents.\n"
+        "- Once you have tool results, answer immediately. Do NOT search again."
+    )
+
+    SYSTEM_PROMPT = (
+        f"{base_prompt}\n\nCONTEXT FROM PREVIOUS CONVERSATIONS:\n"
+        + "\n".join("- " + m for m in memories)
+        + "\n\nUse this context ONLY if relevant. DO NOT repeat old answers."
+        if memories else base_prompt
+    )
+
+    input_messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_query)]
+
+    # This is the generator function that yields SSE chunks
+    async def generate():
+        full_response = ""  # We accumulate the full response to save to DB after stream ends
+        tool_outputs = {}
+        try:
+            # astream_events fires events for EVERY node in the LangGraph
+            async for event in agent_app.astream_events(
+                {"messages": input_messages},
+                config={"configurable": {"user_id": user_id}},
+                version="v2"  # required for the newer LangGraph versions
+            ):
+                if event["event"] == "on_tool_end":
+                    tool_name = event.get("name", "")
+                    tool_output = event["data"].get("output", "")
+                    if hasattr(tool_output, 'content'):
+                        tool_output = tool_output.content
+                    tool_outputs[tool_name] = tool_output   # save for citation parsing
+
+
+                # on_chat_model_stream fires for every token the LLM generates,each event is type of dicteg.{"event": "on_chat_model_stream","data": {content,...}}
+                if event["event"] == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+
+                    # Skip tool-call chunks (when model is deciding to call a tool)
+                    # tool_call_chunks are intermediate reasoning, not the final answer
+                    if chunk.tool_call_chunks:
+                        continue
+
+                    # Only stream actual text tokens
+                    if chunk.content:
+                        token = chunk.content
+                        full_response += token
+                        # Server-Sent Events (SSE) format: must be "data: ...\n\n"
+                        yield f"data: {json.dumps({'token': token, 'conv_id': conv_id})}\n\n"
+            # yield f"data: {json.dumps({'done': True, 'conv_id': conv_id})}\n\n"
+
+
+            citations = []
+            if 'web_search' in tool_outputs:
+                blocks = tool_outputs['web_search'].split('\n\n---\n\n')
+                for block in blocks:
+                    url, snippet = '', ''
+                    for line in block.split('\n'):
+                        if line.startswith('SOURCE_URL::'):
+                            url = line.replace('SOURCE_URL::', '').strip()
+                        elif line.startswith('SNIPPET::'):
+                            snippet = line.replace('SNIPPET::', '').strip()
+                    if url:
+                        citations.append({'url': url, 'snippet': snippet})
+
+            # ── Grade the complete answer ──
+            quality = grade_answer(user_query, full_response)
+
+            # ── Send the final "done" event with citations + quality ──
+            yield f"data: {json.dumps({'done': True, 'conv_id': conv_id, 'citations': citations, 'quality': quality})}\n\n"
+
+            try:
+                db.add_message_to_conversation(conv_id, user_id, user_query, full_response)
+            except Exception as e:
+                print(f"DEBUG: Failed to save to SQL: {e}")
+
+            try:
+                mem_client.add(
+                    user_id=user_id,
+                    messages=[
+                        {"role": "user", "content": user_query},
+                        {"role": "assistant", "content": full_response}
+                    ]
+                )
+            except Exception as e:
+                print(f"DEBUG: Failed to save to Mem0: {e}")
+
+        except Exception as e:
+            # Send error to frontend so it doesn't hang forever
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",   # Disables nginx buffering (important for streaming)
+            "Cache-Control": "no-cache", # Prevents browser from caching the stream
+        }
+    )

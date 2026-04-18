@@ -195,7 +195,8 @@ async function deleteConversation(convId) {
 }
 
 // === ADD MESSAGE TO UI ===
-function addMessageToUI(sender, text, className) {
+// === UPGRADED: Add message with optional citations and quality badge ===
+function addMessageToUI(sender, text, className, citations = [], quality = 'relevant') {
     const chatwindow = document.getElementById('chatwindow');
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${className}`;
@@ -208,71 +209,232 @@ function addMessageToUI(sender, text, className) {
 
     messageDiv.appendChild(senderSpan);
     messageDiv.appendChild(textSpan);
-    
+
+    // ── Quality warning badge (shown only if grader flagged it) ──
+    if (className === 'bot-message' && quality === 'not_relevant') {
+        const badge = document.createElement('div');
+        badge.style.cssText = `
+            margin-top: 8px;
+            padding: 4px 10px;
+            background: #3d2000;
+            border: 1px solid #ff8c00;
+            border-radius: 6px;
+            color: #ff8c00;
+            font-size: 12px;
+            display: inline-block;
+        `;
+        badge.textContent = '⚠️ This answer may not fully address your question.';
+        messageDiv.appendChild(badge);
+    }
+
+    // ── Citation pills (shown only for bot messages with citations) ──
+    if (className === 'bot-message' && citations.length > 0) {
+        const citationContainer = document.createElement('div');
+        citationContainer.style.cssText = 'margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px;';
+
+        const label = document.createElement('span');
+        label.style.cssText = 'width: 100%; font-size: 11px; color: #666; margin-bottom: 2px;';
+        label.textContent = 'Sources:';
+        citationContainer.appendChild(label);
+
+        citations.forEach((cite, i) => {
+            const pill = document.createElement('a');
+            pill.href = cite.url;
+            pill.target = '_blank';
+            pill.rel = 'noopener noreferrer';
+            pill.title = cite.snippet;   // shows snippet on hover
+            pill.style.cssText = `
+                padding: 3px 10px;
+                background: #1a1a2e;
+                border: 1px solid #0f3460;
+                border-radius: 20px;
+                color: #4da6ff;
+                font-size: 12px;
+                text-decoration: none;
+                transition: background 0.2s;
+            `;
+            // Show domain name only, e.g. "cardekho.com"
+            try {
+                const domain = new URL(cite.url).hostname.replace('www.', '');
+                pill.textContent = `[${i + 1}] ${domain}`;
+            } catch {
+                pill.textContent = `[${i + 1}] Source`;
+            }
+            pill.onmouseover = () => pill.style.background = '#0f3460';
+            pill.onmouseout = () => pill.style.background = '#1a1a2e';
+            citationContainer.appendChild(pill);
+        });
+
+        messageDiv.appendChild(citationContainer);
+    }
+
     chatwindow.appendChild(messageDiv);
     chatwindow.scrollTop = chatwindow.scrollHeight;
+    return textSpan;  // return so streaming can append to it
 }
 
 // === SEND MESSAGE ===
 async function sendMessage() {
     const userInput = document.getElementById('userinput');
     const message = userInput.value.trim();
-    
+
     if (!message) return;
     if (!authToken) { alert('Please login first'); return; }
-    
+
     addMessageToUI("You", message, "user-message");
     userInput.value = "";
 
-    // Add thinking bubble
+    // 1. Create the bot message bubble immediately (empty, will fill live)
     const chatwindow = document.getElementById('chatwindow');
-    const thinkingDiv = document.createElement('div');
-    thinkingDiv.className = 'message bot-message';
-    thinkingDiv.id = 'thinking-indicator';
-    thinkingDiv.innerHTML = '<strong>Bot: </strong><span style="color:#999;font-style:italic;">Thinking...</span>';
-    chatwindow.appendChild(thinkingDiv);
+    const botDiv = document.createElement('div');
+    botDiv.className = 'message bot-message';
+
+    const senderSpan = document.createElement('strong');
+    senderSpan.textContent = "Bot: ";
+
+    const textSpan = document.createElement('span');
+    textSpan.textContent = "";  // starts empty, tokens get appended here
+
+    // Blinking cursor shown while streaming
+    const cursor = document.createElement('span');
+    cursor.id = 'streaming-cursor';
+    cursor.textContent = '▋';
+    cursor.style.cssText = 'animation: blink 1s step-end infinite; margin-left: 2px;';
+
+    botDiv.appendChild(senderSpan);
+    botDiv.appendChild(textSpan);
+    botDiv.appendChild(cursor);
+    chatwindow.appendChild(botDiv);
     chatwindow.scrollTop = chatwindow.scrollHeight;
 
     try {
-        const response = await fetch('http://127.0.0.1:5000/chat', {
+        // 2. Hit the streaming endpoint instead of the old /chat
+        const response = await fetch('http://127.0.0.1:5000/chat/stream', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 message: message,
                 conversation_id: currentConversationId
             })
         });
-        
-        const data = await response.json();
 
-        // Remove thinking bubble
-        document.getElementById('thinking-indicator')?.remove();
+        if (!response.ok) {
+            cursor.remove();
+            textSpan.textContent = "Error: Server returned " + response.status;
+            return;
+        }
 
-        if (response.ok) {
-            if (data.response) {
-                addMessageToUI("Bot", data.response, "bot-message");
-                
-                if (data.conversation_id) {
-                    const wasNewConversation = !currentConversationId;
-                    currentConversationId = data.conversation_id;
-                    if (wasNewConversation) setTimeout(() => loadConversations(), 100);
+        // 3. Read the stream chunk by chunk
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder(); // converts raw bytes → text
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break; // stream closed by server
+
+            // Decode the raw bytes into a string
+            const chunk = decoder.decode(value, { stream: true });
+
+            // Each SSE message looks like: "data: {...}\n\n"
+            // Split by double newline to get individual messages
+            const lines = chunk.split('\n\n');
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue; // skip empty lines
+
+                const jsonStr = line.replace('data: ', '').trim();
+                if (!jsonStr) continue;
+
+                try {
+                    const parsed = JSON.parse(jsonStr);
+
+                    if (parsed.error) {
+                        // Backend sent an error mid-stream
+                        cursor.remove();
+                        textSpan.textContent = "Error: " + parsed.error;
+                        break;
+                    }
+
+                    if (parsed.token) {
+                        // Append this token to the visible message
+                        textSpan.textContent += parsed.token;
+                        chatwindow.scrollTop = chatwindow.scrollHeight; // auto-scroll
+                    }
+
+                    if (parsed.done) {
+                        // Stream is finished
+                        cursor.remove(); // remove blinking cursor
+
+                        // Update conversation ID if this was a new conversation
+                        if (parsed.conv_id) {
+                            const wasNew = !currentConversationId;
+                            currentConversationId = parsed.conv_id;
+                            if (wasNew) setTimeout(() => loadConversations(), 300);
+                        }
+                        const citations = parsed.citations || [];
+                        const quality = parsed.quality || 'relevant';
+
+                        if (quality === 'not_relevant') {
+                            const badge = document.createElement('div');
+                            badge.style.cssText = `
+                                margin-top: 8px; padding: 4px 10px;
+                                background: #3d2000; border: 1px solid #ff8c00;
+                                border-radius: 6px; color: #ff8c00;
+                                font-size: 12px; display: inline-block;
+                            `;
+                            badge.textContent = '⚠️ This answer may not fully address your question.';
+                            botDiv.appendChild(badge);
+                        }
+
+                        if (citations.length > 0) {
+                            const citationContainer = document.createElement('div');
+                            citationContainer.style.cssText = 'margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px;';
+
+                            const label = document.createElement('span');
+                            label.style.cssText = 'width: 100%; font-size: 11px; color: #666; margin-bottom: 2px;';
+                            label.textContent = 'Sources:';
+                            citationContainer.appendChild(label);
+
+                            citations.forEach((cite, i) => {
+                                const pill = document.createElement('a');
+                                pill.href = cite.url;
+                                pill.target = '_blank';
+                                pill.rel = 'noopener noreferrer';
+                                pill.title = cite.snippet;
+                                pill.style.cssText = `
+                                    padding: 3px 10px; background: #1a1a2e;
+                                    border: 1px solid #0f3460; border-radius: 20px;
+                                    color: #4da6ff; font-size: 12px;
+                                    text-decoration: none;
+                                `;
+                                try {
+                                    const domain = new URL(cite.url).hostname.replace('www.', '');
+                                    pill.textContent = `[${i + 1}] ${domain}`;
+                                } catch {
+                                    pill.textContent = `[${i + 1}] Source`;
+                                }
+                                citationContainer.appendChild(pill);
+                            });
+
+                            botDiv.appendChild(citationContainer);
+                            chatwindow.scrollTop = chatwindow.scrollHeight;
+                        }
+                    }
+
+                } catch (parseErr) {
+                    // Malformed JSON in a chunk — skip it
+                    console.warn('Could not parse SSE chunk:', jsonStr);
                 }
             }
-        } else {
-            if (response.status === 401) {
-                addMessageToUI("System", "Session expired. Please login again.", "error-message");
-                setTimeout(() => document.getElementById('logout-button').click(), 2000);
-            } else {
-                addMessageToUI("System", "Error: " + (data.detail || JSON.stringify(data)), "error-message");
-            }
         }
+
     } catch (error) {
-        document.getElementById('thinking-indicator')?.remove();
-        console.error('Send message error:', error);
-        addMessageToUI("System", "Server connection failed.", "error-message");
+        cursor.remove();
+        textSpan.textContent = "Server connection failed.";
+        console.error('Stream error:', error);
     }
 }
 

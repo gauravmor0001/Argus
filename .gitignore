@@ -17,3 +17,5 @@ backend/data/
 # Uploaded documents
 backend/docs/
 temp_*
+
+notes.txt

@@ -1,6 +1,7 @@
 from datetime import datetime
 from langchain_core.tools import tool
-from langchain_community.tools import TavilySearchResults
+# from langchain_community.tools import TavilySearchResults
+from langchain_tavily import TavilySearch 
 import wikipedia
 from langchain_qdrant import QdrantVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -25,39 +26,35 @@ def web_search(query: str):
     Use this when the user asks about current events or topics you don't know.
     """
     try:
-        
-        tool = TavilySearchResults(max_results=3)
-        # this automatically access the api_key.
+        search_tool = TavilySearch(max_results=3)
+        raw = search_tool.invoke({"query": query})
 
-        results = tool.invoke({"query": query})
+        print(f"DEBUG: Result type: {type(raw)}")
+
+        # TavilySearch returns a DICT like {'results': [...], 'answer': '...'}
+        # NOT a list — extract the list first
+        if isinstance(raw, dict):
+            results = raw.get('results', [])
+        elif isinstance(raw, list):
+            results = raw
+        else:
+            # Fallback: plain string answer
+            return f"SOURCE_URL::unknown\nSNIPPET::{str(raw)[:500]}"
+
+        if not results:
+            return "No results found."
+
         output = []
         for res in results:
-            output.append(f"Source: {res.get('url')}\nContent: {res.get('content')}")
-            
-        final_output = "\n\n".join(output)
+            url = res.get('url', 'unknown')
+            content = res.get('content', '')[:300]
+            output.append(f"SOURCE_URL::{url}\nSNIPPET::{content}")
+
         print(f"DEBUG: Web search returned {len(results)} results")
-        print(f"DEBUG: Full output:\n{final_output}")  # ← Add this
-        return final_output
-    
+        return "\n\n---\n\n".join(output)
+
     except Exception as e:
         return f"Search failed: {str(e)}"
-    
-# @tool
-# def search_wikipedia(query:str):
-#     """
-#     Search Wikipedia for definitions, historical facts, or technical concepts.
-#     Use this for academic topics, famous people, or established knowledge.
-#     """
-#     try:
-#         return wikipedia.summary(query,sentences=3)
-#     except wikipedia.exceptions.DisambiguationError as e:
-#         return f"Ambiguous query. Options: {e.options[:5]}"
-#     except wikipedia.exceptions.PageError:
-#         return "Page not found on Wikipedia."
-#     except Exception as e:
-#         return f"Wikipedia search failed: {str(e)}"
-    
-
 @tool
 def search_knowledge_base(query: str, config: RunnableConfig):
     """

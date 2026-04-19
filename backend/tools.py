@@ -3,7 +3,7 @@ from langchain_core.tools import tool
 # from langchain_community.tools import TavilySearchResults
 from langchain_tavily import TavilySearch 
 import wikipedia
-from langchain_qdrant import QdrantVectorStore, FastEmbedSparse
+from langchain_qdrant import QdrantVectorStore, FastEmbedSparse, RetrievalMode
 from langchain_huggingface import HuggingFaceEmbeddings
 from sentence_transformers import CrossEncoder 
 from langchain_core.runnables import RunnableConfig #secure back channel
@@ -69,7 +69,7 @@ def search_knowledge_base(query: str, config: RunnableConfig):
         vector_db = QdrantVectorStore.from_existing_collection(
             embedding=embedding_model,
             sparse_embedding=sparse_embedding_model,
-            retrieval_mode="HYBRID",
+            retrieval_mode=RetrievalMode.HYBRID,
             url="http://localhost:6333",
             collection_name="learning-rag"
         )

@@ -309,16 +309,18 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
         print(f"DEBUG: Memory Error: {e}")
 
     base_prompt = (
-        "You are a helpful assistant. "
-        "You have three tools available:\n"
-        "1. 'search_knowledge_base' — use ONLY for questions about uploaded documents, resumes, or personal files.\n"
-        "2. 'web_search' — use ONLY for current events, news, or real-time information.\n\n"
-        "3. 'get_current_time'- return the time and date"
-        "STRICT RULES:\n"
-        "- Call each tool AT MOST ONCE per user question.\n"
-        "- NEVER call search_knowledge_base for general knowledge or news questions.\n"
-        "- NEVER call web_search for questions about uploaded documents.\n"
-        "- Once you have tool results, answer immediately. Do NOT search again."
+    "You are a helpful assistant. "
+    "You have three tools available:\n"
+    "1. 'search_knowledge_base' — use this for ANY question about the user's personal information, "
+    "uploaded documents, resumes, files, or when the user asks you to 'check your database', "
+    "'look up my data', or anything about what you know about them.\n"
+    "2. 'web_search' — use ONLY for current events, news, real-time information, weather, prices.\n"
+    "3. 'get_current_time' — returns current date and time.\n"
+    "STRICT RULES:\n"
+    "- Call each tool AT MOST ONCE per user question.\n"
+    "- When in doubt whether to search the knowledge base, DO search it.\n"  # ← new
+    "- NEVER call web_search for questions about uploaded documents.\n"
+    "- Once you have tool results, answer immediately. Do NOT search again."
     )
 
     SYSTEM_PROMPT = (

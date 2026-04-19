@@ -65,7 +65,11 @@
                 <button onclick="document.getElementById('fileInput').click()" 
                         style="width: 100%; background: #2a2a2a; border: 1px dashed #555; color: #ccc; padding: 10px; border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    Upload PDF
+                    Upload File
+                </button>
+                <button onclick="openFileManager()" 
+                        style="width: 100%; background: transparent; border: 1px solid #444; color: #aaa; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 12px; margin-top: 10px; transition: 0.2s;">
+                    ⚙️ Manage Files
                 </button>
                 
                 <div id="uploadStatus" style="font-size: 11px; margin-top: 8px; text-align: center; min-height: 15px;"></div>
@@ -101,7 +105,17 @@
             </section>
         </main>
     </div>
-</div>
+    <div id="file-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Your Knowledge Base</h2>
+                    <button onclick="closeFileManager()" class="close-modal">&times;</button>
+                </div>
+                <div id="file-list" class="file-list">
+                    <p style="text-align: center; color: #888;">Loading...</p>
+                </div>
+            </div>
+    </div>
 
         <script src="script.js"></script>
     </body>

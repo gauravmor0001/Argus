@@ -616,3 +616,84 @@ async function uploadFile() {
         console.error('Upload error:', error);
     }
 }
+
+// === FILE MANAGER LOGIC ===
+
+function openFileManager() {
+    document.getElementById('file-modal').style.display = 'flex';
+    loadUserFiles();
+}
+
+function closeFileManager() {
+    document.getElementById('file-modal').style.display = 'none';
+}
+
+async function loadUserFiles() {
+    const fileList = document.getElementById('file-list');
+    fileList.innerHTML = '<p style="text-align: center; color: #888;">Loading files...</p>';
+
+    try {
+        const response = await fetch('http://127.0.0.1:5000/files', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === "success") {
+            renderFiles(data.files);
+        } else {
+            fileList.innerHTML = `<p style="color: #ff4757; text-align: center;">Error: ${data.message}</p>`;
+        }
+    } catch (error) {
+        fileList.innerHTML = '<p style="color: #ff4757; text-align: center;">Connection error.</p>';
+    }
+}
+
+function renderFiles(files) {
+    const fileList = document.getElementById('file-list');
+    fileList.innerHTML = '';
+
+    if (!files || files.length === 0) {
+        fileList.innerHTML = '<p style="text-align: center; color: #888;">No files uploaded yet.</p>';
+        return;
+    }
+
+    files.forEach(file => {
+        const date = new Date(file.uploaded_at).toLocaleDateString();
+        
+        const fileDiv = document.createElement('div');
+        fileDiv.className = 'file-item';
+        
+        fileDiv.innerHTML = `
+            <div class="file-item-info">
+                <span class="file-name" title="${file.filename}">${file.filename}</span>
+                <span class="file-date">Uploaded: ${date}</span>
+            </div>
+            <button class="delete-file-btn" onclick="deleteFile('${file.id}')">Delete</button>
+        `;
+        
+        fileList.appendChild(fileDiv);
+    });
+}
+
+async function deleteFile(fileId) {
+    if (!confirm("Are you sure? This will delete the file and remove its knowledge from the AI.")) return;
+
+    try {
+        const response = await fetch(`http://127.0.0.1:5000/files/${fileId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === "success") {
+            // Reload the list to show it's gone
+            loadUserFiles(); 
+        } else {
+            alert(`Error: ${data.message}`);
+        }
+    } catch (error) {
+        alert('Connection error while trying to delete.');
+    }
+}

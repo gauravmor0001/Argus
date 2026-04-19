@@ -43,6 +43,16 @@ class UserDatabase:
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS files (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                uploaded_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        ''')
+
         conn.commit()
         conn.close()
 
@@ -257,4 +267,78 @@ class UserDatabase:
         except Exception as e:
             print(f"❌ Error deleting conversation: {e}")
             return False
+        
+
+    def add_file(self, user_id, filename):
+        """Records a successfully uploaded file in the database."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            file_id = str(uuid.uuid4())
+            now = datetime.now().isoformat()
+            
+            cursor.execute('''
+                INSERT INTO files (id, user_id, filename, uploaded_at)
+                VALUES (?, ?, ?, ?)
+            ''', (file_id, user_id, filename, now))
+            
+            conn.commit()
+            conn.close()
+            return file_id
+        except Exception as e:
+            print(f"❌ Error tracking file: {e}")
+            return None
+
+    def get_files(self, user_id):
+        """Fetches all tracked files for a specific user."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, filename, uploaded_at 
+                FROM files 
+                WHERE user_id = ? 
+                ORDER BY uploaded_at DESC
+            ''', (user_id,))
+            
+            files = []
+            for row in cursor.fetchall():
+                files.append({
+                    "id": row[0],
+                    "filename": row[1],
+                    "uploaded_at": row[2]
+                })
+                
+            conn.close()
+            return files
+        except Exception as e:
+            print(f"❌ Error fetching files: {e}")
+            return []
+
+    def delete_file_record(self, file_id, user_id):
+        """Deletes the SQL record and returns the filename so Qdrant knows what to delete."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get the filename first before we delete the row
+            cursor.execute('SELECT filename FROM files WHERE id = ? AND user_id = ?', (file_id, user_id))
+            result = cursor.fetchone()
+            
+            if not result:
+                conn.close()
+                return None
+                
+            filename = result[0]
+            
+            # Delete the row
+            cursor.execute('DELETE FROM files WHERE id = ? AND user_id = ?', (file_id, user_id))
+            
+            conn.commit()
+            conn.close()
+            return filename
+        except Exception as e:
+            print(f"❌ Error deleting file record: {e}")
+            return None
             

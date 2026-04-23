@@ -17,6 +17,7 @@ from mem0 import Memory
 from tools import tools_list
 from fastapi.responses import StreamingResponse 
 import uuid
+from langchain_core.runnables import RunnableConfig
 
 
 load_dotenv()
@@ -27,6 +28,7 @@ db = UserDatabase()
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
+    tools_allowed: Optional[dict] = None
 
 MODEL_NAME = "llama-3.3-70b-versatile"
 llm = ChatGroq(
@@ -102,14 +104,25 @@ def normalize_tool_calls(state: MessagesState):
     state["messages"][-1] = new_message
     return {"messages": state["messages"]}
 
-def reasoner(state: MessagesState):
-    """The main thinking node for the AI."""
-    # Take the entire history of the conversation from the flowchart's state
-    # Hand it to the LLM (which has tools attached to it)
-    response = llm_with_tools.invoke(state["messages"])
-    # Take the AI's new reply, add it to the list of messages, 
-    # and send it back to the flowchart
-    return {"messages":  [response]}
+def reasoner(state: MessagesState, config: RunnableConfig):
+    """The main thinking node for the AI, with Dynamic Tool Binding."""
+    tools_allowed = config.get("configurable", {}).get("tools_allowed", {})
+
+    active_tools = []
+    for tool in tools_list:
+        if tools_allowed.get(tool.name, True):
+            active_tools.append(tool)
+
+    if active_tools:
+        print(f"DEBUG: Binding tools: {[t.name for t in active_tools]}")
+        bound_llm = llm.bind_tools(active_tools)
+    else:
+        print("DEBUG: No tools allowed. Running as pure text LLM.")
+        bound_llm = llm
+
+    response = bound_llm.invoke(state["messages"])
+    
+    return {"messages": [response]}
 
 
 workflow = StateGraph(MessagesState)
@@ -337,10 +350,16 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
         full_response = ""  # We accumulate the full response to save to DB after stream ends
         tool_outputs = {}
         try:
+            tools_allowed = request.tools_allowed or {}
             # astream_events fires events for EVERY node in the LangGraph
             async for event in agent_app.astream_events(
                 {"messages": input_messages},
-                config={"configurable": {"user_id": user_id}},
+                config={
+                    "configurable": {
+                        "user_id": user_id,
+                        "tools_allowed": tools_allowed
+                    }
+                },
                 version="v2"  # required for the newer LangGraph versions
             ):
                 # fires the moment a tool starts — before results come back ──

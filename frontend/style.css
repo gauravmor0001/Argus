@@ -278,7 +278,7 @@ button:hover {
 .error-message {
     color: #e74c3c;
 }
-
+/* 
 .chat-input {
     display: flex;
     align-items: center;
@@ -295,8 +295,8 @@ button:hover {
     background-color: white;
     border-color: #dbe4ef;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
+} */
+/* 
 #userinput {
     flex: 1;
     border: none;
@@ -307,8 +307,8 @@ button:hover {
     padding: 10px 0;
     margin: 0;
     width: auto;
-}
-
+} */
+/* 
 #sendbutton {
     width: 45px;
     height: 45px;
@@ -324,7 +324,7 @@ button:hover {
     margin-left: 10px;
     padding: 0;
     flex-shrink: 0;
-}
+} */
 
 #sendbutton:hover {
     background-color: #2980b9;
@@ -545,7 +545,99 @@ header {
     align-items: center; 
     justify-content: center; 
     gap: 8px; transition: 0.2s;
+    
 }
 .uploadfile:hover{
     padding: 15px;
+}
+
+
+.chat-input-container {
+    display: flex;
+    flex-direction: column;
+    background-color: #bed1e9;
+    border-radius: 24px;
+    padding: 12px 16px;
+    margin-top: 15px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    border: 1px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.chat-input-container:focus-within {
+    background-color: white;
+    border-color: #dbe4ef;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+#userinput {
+    width: 100%;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: 16px;
+    color: #1f1f1f;
+    padding: 8px 4px 16px 4px;
+}
+
+/* Bottom row: Toggles and Send button */
+.chat-input-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chat-toggles {
+    display: flex;
+    gap: 8px;
+}
+
+.tool-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    color: #666;
+    border: 1px solid #ccc;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tool-toggle:hover {
+    background: #e9e9e9;
+}
+
+.tool-toggle.active {
+    background: #e3f2fd; /* Light blue */
+    color: #0b79c7;
+    border-color: #0b79c7;
+}
+
+.chat-actions {
+    display: flex;
+    align-items: center;
+}
+
+#sendbutton {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s, background-color 0.2s;
+    padding: 0;
+}
+
+#sendbutton:hover {
+    background-color: #2980b9;
+    transform: scale(1.05);
 }

@@ -26,7 +26,7 @@ function showMainInterface() {
      console.log('showMainInterface called'); // ← ADD THIS
     document.getElementById('auth-container').style.display = 'none';
     document.getElementById('main-container').style.display = 'block';
-    document.getElementById('username-display').textContent = `Welcome, ${currentUser}!`;
+    document.getElementById('username-display').textContent = `Hello, ${currentUser}!`;
     loadConversations();
 }
 
@@ -306,12 +306,16 @@ async function sendMessage() {
     chatwindow.scrollTop = chatwindow.scrollHeight;
 
     try {
-        // 2. Hit the streaming endpoint instead of the old /chat
+        const toolsAllowed = {
+            "search_knowledge_base": document.getElementById('toggle-kb').classList.contains('active'),
+            "web_search": document.getElementById('toggle-web').classList.contains('active')
+        };
         const response = await fetch('http://127.0.0.1:5000/chat/stream', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
+                'Authorization': `Bearer ${authToken}`,
+                tools_allowed: toolsAllowed
             },
             body: JSON.stringify({
                 message: message,
@@ -471,7 +475,6 @@ async function sendMessage() {
     }
 }
 
-// === DOM CONTENT LOADED ===
 document.addEventListener("DOMContentLoaded", () => {
     // Check if user is already logged in
     authToken = localStorage.getItem('auth_token');
@@ -480,6 +483,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (authToken && currentUser) {
         showMainInterface();
     }
+
+    // tool logic
+    const toolToggles = document.querySelectorAll('.tool-toggle');
+    toolToggles.forEach(toggle => {
+        toggle.addEventListener('click', () => {
+            toggle.classList.toggle('active');
+        });
+    });
 
     // === LOGIN HANDLER ===
     document.getElementById('login-form').addEventListener('submit', async (e) => {

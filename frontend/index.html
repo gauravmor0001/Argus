@@ -91,13 +91,29 @@
                 <main class="main-content">
                     <section class="chatbox">
                         <div class="chat-window" id="chatwindow"></div>
-                        <div class="chat-input">
-                            <input type="text" id="userinput" placeholder="Message Argus..." autocomplete="on" />
-                            <button id="sendbutton">
-                                <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 -960 960 960" width="24">
-                                    <path d="M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z" fill="white"/>
-                                </svg>
-                            </button>
+                        <div class="chat-input-container">
+                            <input type="text" id="userinput" placeholder="Message Argus..." autocomplete="off" />
+                            <div class="chat-input-controls">
+                                <div class="chat-toggles">
+                                    <button type="button" id="toggle-kb" class="tool-toggle active" data-tool="search_knowledge_base">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                                        Knowledge Base
+                                    </button>
+                                    
+                                    <button type="button" id="toggle-web" class="tool-toggle" data-tool="web_search">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+                                        Web Search
+                                    </button>
+                                </div>
+                                
+                                <div class="chat-actions">
+                                    <button id="sendbutton">
+                                        <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" width="20">
+                                            <path d="M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z" fill="currentColor"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </section>
                 </main>

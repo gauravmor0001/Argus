@@ -343,6 +343,19 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                 config={"configurable": {"user_id": user_id}},
                 version="v2"  # required for the newer LangGraph versions
             ):
+                # fires the moment a tool starts — before results come back ──
+                if event["event"] == "on_tool_start":
+                    tool_name = event.get("name", "")
+
+                    if tool_name == "web_search":
+                        yield f"data: {json.dumps({'status': 'searching_web'})}\n\n"
+
+                    elif tool_name == "search_knowledge_base":
+                        yield f"data: {json.dumps({'status': 'searching_kb'})}\n\n"
+
+                    elif tool_name == "get_current_time":
+                        yield f"data: {json.dumps({'status': 'getting_time'})}\n\n"
+
                 if event["event"] == "on_tool_end":
                     tool_name = event.get("name", "")
                     tool_output = event["data"].get("output", "")

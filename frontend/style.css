@@ -110,24 +110,18 @@ header {
     padding: 20px;
 }
 
-.header-content {
-    max-width: 900px;
-    margin: 0 auto;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
 
 .header-right {
     display: flex;
     align-items: center;
     gap: 15px;
+    margin-right:25px;
 }
 
 .username-display {
-    color: white;
-    font-weight: 600;
-    font-size: 14px;
+    /* color: rgb(176, 30, 30); */
+    /* font-weight: 600;     */
+    font-size: 554px;
 }
 
 .logout-button {
@@ -145,25 +139,8 @@ header {
     background: #c0392b;
 }
 
-/* === MAIN CONTAINER === */
-.main-layout {
-    display: flex;
-    height: calc(100vh - 80px);
-    overflow: hidden;
-}
-
-/* === SIDEBAR === */
-.sidebar {
-    width: 260px;
-    background: white;
-    border-right: 1px solid #e0e0e0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
 
 .new-chat-button {
-    margin: 15px;
     padding: 12px;
     background: #3498db;
     color: white;
@@ -174,19 +151,17 @@ header {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    transition: background 0.2s;
+    gap: 9px;
+    transition: 0.2s;
+    padding-right:30px;
 }
 
 .new-chat-button:hover {
-    background: #2980b9;
+    background: #053ab6;
+    padding-left:18px;
+    padding-left:18px;
 }
 
-.conversations-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 0 10px 10px 10px;
-}
 
 .conversation-group {
     margin-bottom: 20px;
@@ -249,8 +224,6 @@ header {
 .delete-conversation:hover {
     background: #c0392b;
 }
-
-/* === MAIN CONTENT === */
 .main-content {
     flex: 1;
     display: flex;
@@ -374,23 +347,7 @@ button:hover {
         text-align: center;
     }
     
-    .main-layout {
-        flex-direction: column;
-    }
-    
-    .sidebar {
-        width: 100%;
-        height: 200px;
-        border-right: none;
-        border-bottom: 1px solid #e0e0e0;
-    }
-    
-    .conversations-list {
-        display: flex;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding: 0 10px;
-    }
+
     
     .conversation-group {
         display: flex;
@@ -415,17 +372,20 @@ header {
 }
 
 .header-content {
-    width: 100%;
+    /* max-width: 900px; */
+    /* margin: 0 auto; */
+    width: 100%; /*utlise the full space, forces the argus and welcome to be as far as possible */
     display: flex;
     justify-content: space-between; /* Title left, Name right */
     align-items: center;
 }
 
 .header-left h1 {
-    margin: 0;
-    font-size: 20px;
-    color: #3498db; /* Brand color for title */
+    margin-left: 45px;
+    font-size: 40px;
+    color: #0b79c7; /* Brand color for title */
 }
+
 
 .username-display {
     color: #2c3e50;
@@ -435,29 +395,26 @@ header {
     padding: 8px 15px;
     border-radius: 20px;
 }
-
-/* === SIDEBAR UPDATES === */
 .sidebar {
-    width: 260px;
+    width: 280px;
     background: #f8f9fa;
     border-right: 1px solid #e0e0e0;
     display: flex;
     flex-direction: column; /* Stacks items vertically */
     height: calc(100vh - 60px); /* Full height minus header */
+    overflow: hidden;
 }
 
 .sidebar-header {
     padding: 15px;
 }
 
-/* Critical: This pushes the footer to the bottom */
 .conversations-list {
-    flex: 1; /* Takes up all available empty space */
+    /* flex: 1; */
     overflow-y: auto; /* Scrolls if list is too long */
-    padding: 0 10px;
+    padding: 0 10px 10px 10px;
 }
 
-/* NEW: Sidebar Footer for Logout */
 .sidebar-footer {
     padding: 15px;
     border-top: 1px solid #e0e0e0;
@@ -486,11 +443,12 @@ header {
     color: white;
 }
 
-/* Update Main Layout height */
+
 .main-layout {
     display: flex;
     height: calc(100vh - 60px); /* Adjust for new header height */
     overflow: hidden;
+
 }
 
 @keyframes blink {
@@ -542,3 +500,52 @@ header {
     border-radius: 5px; cursor: pointer; font-size: 12px; transition: 0.2s;
 }
 .delete-file-btn:hover { background: #ff6b81; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+}
+
+.status-dot {
+    width: 7px;
+    height: 7px;
+    background: #4da6ff;
+    border-radius: 50%;
+    display: inline-block;
+    animation: blink 1s step-end infinite;
+}
+
+.managefiles{
+    width: 100%; 
+    background: #2a2a2a;
+    border:none;
+    color: white; 
+    padding: 8px; 
+    border-radius: 8px; 
+    cursor: pointer; 
+    font-size: 12px; 
+    margin-top: 7px; 
+    transition: 0.2s; 
+    padding:10px;
+}
+.managefiles:hover{
+    padding:17px;
+}
+
+.uploadfile{
+    width: 100%; 
+    background: #2a2a2a; 
+    border: 1px dashed #555; 
+    color: #ccc; 
+    padding: 10px; 
+    border-radius: 8px; 
+    cursor: pointer; 
+    font-size: 13px; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    gap: 8px; transition: 0.2s;
+}
+.uploadfile:hover{
+    padding: 15px;
+}

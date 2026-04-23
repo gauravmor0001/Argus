@@ -26,7 +26,7 @@ function showMainInterface() {
      console.log('showMainInterface called'); // ← ADD THIS
     document.getElementById('auth-container').style.display = 'none';
     document.getElementById('main-container').style.display = 'block';
-    document.getElementById('username-display').textContent = `Welcome, ${currentUser}! 👋`;
+    document.getElementById('username-display').textContent = `Welcome, ${currentUser}!`;
     loadConversations();
 }
 
@@ -45,9 +45,9 @@ async function loadConversations() {
         console.error('Error loading conversations:', error);
     }
 }
-// === DISPLAY CONVERSATIONS ===
+
 function displayConversations(conversations) {
-    const listContainer = document.getElementById('conversations-list');
+    const listContainer = document.getElementById('conversations-list');    
     listContainer.innerHTML = '';
     
     if (!conversations || conversations.length === 0) {
@@ -98,7 +98,6 @@ function displayConversations(conversations) {
     }
 }
 
-// === CREATE CONVERSATION GROUP ===
 function createConversationGroup(title, conversations) {
     const groupDiv = document.createElement('div');
     groupDiv.className = 'conversation-group';
@@ -195,7 +194,6 @@ async function deleteConversation(convId) {
 }
 
 // === ADD MESSAGE TO UI ===
-// === UPGRADED: Add message with optional citations and quality badge ===
 function addMessageToUI(sender, text, className, citations = [], quality = 'relevant') {
     const chatwindow = document.getElementById('chatwindow');
     const messageDiv = document.createElement('div');
@@ -357,6 +355,40 @@ async function sendMessage() {
                         textSpan.textContent = "Error: " + parsed.error;
                         break;
                     }
+                    if (parsed.status) {
+                        // Remove any existing status indicator first
+                        // (in case two tools run back to back)
+                        const existing = botDiv.querySelector('.tool-status');
+                        if (existing) existing.remove();
+
+                        // Build the indicator message
+                        const messages = {
+                            'searching_web': '🌐 Searching the internet...',
+                            'searching_kb':  '📚 Searching your documents...',
+                            'getting_time':  '🕐 Getting current time...'
+                        };
+                        const text = messages[parsed.status] || '⚙️ Working...';
+
+                        // Create the animated status pill
+                        const statusEl = document.createElement('div');
+                        statusEl.className = 'tool-status';
+                        statusEl.style.cssText = `
+                            margin-top: 6px;
+                            padding: 4px 12px;
+                            background: #1a1a2e;
+                            border: 1px solid #0f3460;
+                            border-radius: 20px;
+                            color: #4da6ff;
+                            font-size: 12px;
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 6px;
+                            animation: pulse 1.5s ease-in-out infinite;
+                        `;
+                        statusEl.innerHTML = `<span class="status-dot"></span>${text}`;
+                        botDiv.appendChild(statusEl);
+                        chatwindow.scrollTop = chatwindow.scrollHeight;
+                    }
 
                     if (parsed.token) {
                         // Append this token to the visible message
@@ -366,6 +398,7 @@ async function sendMessage() {
 
                     if (parsed.done) {
                         // Stream is finished
+                        botDiv.querySelector('.tool-status')?.remove();
                         cursor.remove(); // remove blinking cursor
 
                         // Update conversation ID if this was a new conversation
@@ -578,7 +611,6 @@ async function uploadFile() {
 
     if (!file) return;
 
-    // 1. UI Feedback
     statusDiv.innerText = "⏳ Reading & Learning...";
     statusDiv.style.color = "#FFD700"; // Gold
 
@@ -587,7 +619,6 @@ async function uploadFile() {
 
     try {
         // 2. Send to Backend
-        // Note: We use the port 5000 as per your server.py
         const response = await fetch('http://127.0.0.1:5000/upload-doc', {
             method: 'POST',
             headers: {  
@@ -598,17 +629,15 @@ async function uploadFile() {
 
         const data = await response.json();
         
-        // 3. Handle Result
         if (data.status === "success") {
             statusDiv.innerText = "✅ Knowledge Added!";
-            statusDiv.style.color = "#4caf50"; // Green
-            fileInput.value = ""; // Reset input
+            statusDiv.style.color = "#4caf50";
+            fileInput.value = ""; 
             
-            // Optional: clear message after 3 seconds
             setTimeout(() => { statusDiv.innerText = ""; }, 3000);
         } else {
             statusDiv.innerText = "❌ Error: " + data.message;
-            statusDiv.style.color = "#f44336"; // Red
+            statusDiv.style.color = "#f44336";
         }
     } catch (error) {
         statusDiv.innerText = "❌ Server Error";

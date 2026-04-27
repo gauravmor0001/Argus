@@ -40,6 +40,16 @@ llm_with_tools = llm.bind_tools(tools_list)
 
 config = {
     "version": "v1.1",
+    "custom_prompt": (
+        "You are a memory extraction assistant. Analyze the conversation and extract "
+        "important facts about the user. Focus strictly on: "
+        "1. Personal details (name, location, occupation, academic details). "
+        "2. Technical skills and programming languages they use. "
+        "3. Current projects they are working on (e.g., 'building a RAG system'). "
+        "4. Specific preferences (e.g., 'keep answers short', 'prefers dark mode'). "
+        "Ignore general knowledge questions, greetings, and file summaries. "
+        "Store the memories concisely in the third person (e.g., 'User is building an AI chatbot')."
+    ),
     "embedder": {
         "provider": "huggingface",
         "config": {
@@ -55,11 +65,10 @@ config = {
         }
     },
     "vector_store": {
-        "provider": "qdrant",
+        "provider": "chroma",
         "config": {
-            "host": "localhost",
-            "port": 6333,
             "collection_name": "chat_memory",
+            "path": "./memory_db" # This creates a folder named memory_db 
         }
     }
 }
@@ -181,6 +190,53 @@ def grade_answer(question: str, answer: str) -> str:
     except Exception as e:
         print(f"DEBUG: Grader failed: {e}")
         return 'relevant'
+    
+@router.get("/memories")
+async def get_user_memories(authorization: Optional[str] = Header(None)):
+    """Fetches all explicit facts and preferences Argus has memorized about the user."""
+    try:
+        user_id, username = verify_token(authorization)
+        
+        # Ask Mem0 to grab every memory attached to this user_id
+        memories_data = mem_client.get_all(user_id=user_id)
+        
+        # Mem0 returns a slightly complex dictionary. We just want to extract 
+        # the ID, the readable text, and the date it was created.
+        clean_memories = []
+        
+        # Handle different versions of Mem0 response formats
+        raw_memories = memories_data.get("results", memories_data) if isinstance(memories_data, dict) else memories_data
+        
+        if raw_memories:
+            for mem in raw_memories:
+                clean_memories.append({
+                    "id": mem.get("id"),
+                    "text": mem.get("memory", "Unknown memory format"),
+                    "date": mem.get("updated_at") or mem.get("created_at")
+                })
+                
+        return {"status": "success", "memories": clean_memories}
+        
+    except Exception as e:
+        print(f"DEBUG: Error fetching memories: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@router.delete("/memories/{memory_id}")
+async def delete_user_memory(memory_id: str, authorization: Optional[str] = Header(None)):
+    """Deletes a specific memory from Mem0 and Qdrant."""
+    try:
+        user_id, username = verify_token(authorization)
+        
+        # Delete the specific memory by its ID
+        mem_client.delete(memory_id=memory_id)
+        
+        return {"status": "success", "message": "Memory erased."}
+        
+    except Exception as e:
+        print(f"DEBUG: Error deleting memory: {e}")
+        return {"status": "error", "message": str(e)}
+    
 
 @router.get("/conversations")
 async def get_conversations(authorization: Optional[str] = Header(None)): #telling that look only in header(header can be none too), it can be or can not be present. if not, dont crash.

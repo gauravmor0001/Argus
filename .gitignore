@@ -13,6 +13,7 @@ backend/.env
 # Databases (NEVER push user data to GitHub)
 *.db
 backend/data/
+backend/memory_db
 
 # Uploaded documents
 backend/docs/

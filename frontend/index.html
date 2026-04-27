@@ -9,8 +9,8 @@
         <!-- Login/Register Screen -->
         <div id="auth-container" class="auth-container">
             <div class="auth-box">
-                <h1>Argus</h1>
-                <p class="auth-subtitle">Login or Register to continue</p>
+                <h1>Choose your path to Argus</h1>
+                <!-- <p class="auth-subtitle">Login or Register to continue</p> -->
                 
                 <!-- Toggle between Login and Register -->
                 <div class="auth-tabs">
@@ -69,6 +69,9 @@
                         <button class="managefiles" onclick="openFileManager()">
                             ⚙️ Manage Files
                         </button>
+                        <button class="managefiles" onclick="openMemoryManager()">
+                            What I Know About You
+                        </button>   
                         
                         <div id="uploadStatus" style="font-size: 11px; margin-top: 8px; text-align: center; min-height: 15px;"></div>
                     </div>
@@ -129,6 +132,17 @@
                         </div>
                     </div>
             </div>
+            <div id="memory-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Your Cognitive Profile</h2>
+                    <button onclick="closeMemoryManager()" class="close-modal">&times;</button>
+                </div>
+                <div id="memory-list" class="file-list">
+                    <p style="text-align: center; color: #888;">Loading memories...</p>
+                </div>
+            </div>
+        </div>
 
         <script src="script.js"></script>
     </body>

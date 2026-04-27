@@ -737,3 +737,88 @@ async function deleteFile(fileId) {
         alert('Connection error while trying to delete.');
     }
 }
+
+
+
+// Mem0 MEMORY MANAGER LOGIC 
+
+function openMemoryManager() {
+    document.getElementById('memory-modal').style.display = 'flex';
+    loadUserMemories();
+}
+
+function closeMemoryManager() {
+    document.getElementById('memory-modal').style.display = 'none';
+}
+
+async function loadUserMemories() {
+    const memoryList = document.getElementById('memory-list');
+    memoryList.innerHTML = '<p style="text-align: center; color: #888;">Accessing long-term memory...</p>';
+
+    try {
+        const response = await fetch('http://127.0.0.1:5000/memories', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === "success") {
+            renderMemories(data.memories);
+        } else {
+            memoryList.innerHTML = `<p style="color: #ff4757; text-align: center;">Error: ${data.message}</p>`;
+        }
+    } catch (error) {
+        memoryList.innerHTML = '<p style="color: #ff4757; text-align: center;">Connection error.</p>';
+    }
+}
+
+function renderMemories(memories) {
+    const memoryList = document.getElementById('memory-list');
+    memoryList.innerHTML = '';
+
+    if (!memories || memories.length === 0) {
+        memoryList.innerHTML = '<p style="text-align: center; color: #888;">Argus hasn\'t memorized anything about you yet.</p>';
+        return;
+    }
+
+    memories.forEach(mem => {
+        // Handle dates gracefully if they don't exist yet
+        const dateStr = mem.date ? new Date(mem.date).toLocaleDateString() : 'Recently';
+        
+        const memDiv = document.createElement('div');
+        // Reusing the file-item CSS classes so it looks identical to the file manager!
+        memDiv.className = 'file-item'; 
+        
+        memDiv.innerHTML = `
+            <div class="file-item-info" style="flex: 1; padding-right: 15px;">
+                <span class="file-name" style="white-space: normal; line-height: 1.4;" title="${mem.text}">${mem.text}</span>
+                <span class="file-date">Learned: ${dateStr}</span>
+            </div>
+            <button class="delete-file-btn" onclick="deleteMemory('${mem.id}')">Forget</button>
+        `;
+        
+        memoryList.appendChild(memDiv);
+    });
+}
+
+async function deleteMemory(memoryId) {
+    if (!confirm("Are you sure? Argus will permanently forget this fact about you.")) return;
+
+    try {
+        const response = await fetch(`http://127.0.0.1:5000/memories/${memoryId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === "success") {
+            // Reload the list to show the memory is gone
+            loadUserMemories(); 
+        } else {
+            alert(`Error: ${data.message}`);
+        }
+    } catch (error) {
+        alert('Connection error while trying to delete memory.');
+    }
+}

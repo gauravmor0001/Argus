@@ -27,11 +27,11 @@ function showMainInterface() {
     document.getElementById('auth-container').style.display = 'none';
     document.getElementById('main-container').style.display = 'block';
     document.getElementById('username-display').textContent = `Hello, ${currentUser}!`;
+    toggleWelcomeScreen(true);
     loadConversations();
     updateFileDropdown();
 }
 
-// === LOAD CONVERSATIONS ===
 async function loadConversations() {
     console.log('loadConversations called, currentConversationId:', currentConversationId); // ← ADD THIS
     try {
@@ -139,9 +139,9 @@ function createConversationGroup(title, conversations) {
     return groupDiv;
 }
 
-// === LOAD CONVERSATION ===
 async function loadConversation(convId) {
     try {
+        toggleWelcomeScreen(false);
         const response = await fetch(`http://127.0.0.1:5000/conversations/${convId}`, {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
@@ -276,6 +276,7 @@ function addMessageToUI(sender, text, className, citations = [], quality = 'rele
 async function sendMessage() {
     const userInput = document.getElementById('userinput');
     const message = userInput.value.trim();
+    toggleWelcomeScreen(false);
 
     if (!message) return;
     if (!authToken) { alert('Please login first'); return; }
@@ -600,7 +601,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('new-chat-button').addEventListener('click', () => {
         currentConversationId = null;
         document.getElementById('chatwindow').innerHTML = '';
-        
+        toggleWelcomeScreen(true);
         document.querySelectorAll('.conversation-item').forEach(item => {
             item.classList.remove('active');
         });
@@ -867,3 +868,28 @@ async function updateFileDropdown() {
     }
 }
 
+function toggleWelcomeScreen(show) {
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const chatWindow = document.getElementById('chatwindow');
+    
+    // Grab the main chatbox container
+    const chatbox = document.querySelector('.chatbox'); 
+    
+    if (show) {
+        welcomeScreen.classList.remove('hidden');
+        chatWindow.classList.add('hidden');
+        
+        // Add the class to push everything to the center
+        chatbox.classList.add('centered-state'); 
+        
+        if (typeof currentUser !== 'undefined') {
+            document.getElementById('welcome-greeting').textContent = `Hi ${currentUser}`; 
+        }
+    } else {
+        welcomeScreen.classList.add('hidden');
+        chatWindow.classList.remove('hidden');
+        
+        // Remove the class to drop the input box to the bottom
+        chatbox.classList.remove('centered-state'); 
+    }
+}

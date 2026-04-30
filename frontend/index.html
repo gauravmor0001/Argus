@@ -93,7 +93,24 @@
 
                 <main class="main-content">
                     <section class="chatbox">
-                        <div class="chat-window" id="chatwindow"></div>
+                        <div class="chat-display-area">
+                            <!-- THE WELCOME SCREEN -->
+                            <div id="welcome-screen" class="welcome-screen">
+                                <h1 id="welcome-greeting" class="greeting-text">Hi there</h1>
+                                <h2 class="greeting-subtext">Where should we start?</h2>
+                                
+                                <!-- Optional Suggestion Chips -->
+                                <div class="suggestion-chips">
+                                    <button class="chip" onclick="document.getElementById('userinput').value='Summarize my recent files...';">
+                                        📄 Summarize Files
+                                    </button>
+                                    <button class="chip" onclick="document.getElementById('userinput').value='What is the latest news on...';">
+                                        🌐 Search Web
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="chat-window hidden" id="chatwindow"></div>
+                        </div>
                         <div class="chat-input-container">
                             <input type="text" id="userinput" placeholder="Message Argus..." autocomplete="off" />
                             <div class="chat-input-controls">

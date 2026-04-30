@@ -8,7 +8,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from sentence_transformers import CrossEncoder 
 from langchain_core.runnables import RunnableConfig #secure back channel
 from qdrant_client.http import models #we can not simply say filter using user_id to qdrant, so to make the format of the filter we require this.
-
+from api.web_search import execute_web_research
 
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
@@ -20,42 +20,19 @@ reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2') #classification 
 def get_current_time():
     """Get the current real-time date and time."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 @tool
 def web_search(query: str):
     """
     Search the internet for real-time information, news, weather, or facts.
     Use this when the user asks about current events or topics you don't know.
     """
-    try:
-        search_tool = TavilySearch(max_results=3)
-        raw = search_tool.invoke({"query": query})
+    print(f"[Manager] calling Researcher Agent...")
+    
+    research_report = execute_web_research(query)
+    
+    return research_report
 
-        print(f"DEBUG: Result type: {type(raw)}")
-
-        # TavilySearch returns a DICT like {'results': [...], 'answer': '...'}
-        # NOT a list — extract the list first
-        if isinstance(raw, dict):
-            results = raw.get('results', [])
-        elif isinstance(raw, list):
-            results = raw
-        else:
-            # Fallback: plain string answer
-            return f"SOURCE_URL::unknown\nSNIPPET::{str(raw)[:500]}"
-
-        if not results:
-            return "No results found."
-
-        output = []
-        for res in results:
-            url = res.get('url', 'unknown')
-            content = res.get('content', '')[:300]
-            output.append(f"SOURCE_URL::{url}\nSNIPPET::{content}")
-
-        print(f"DEBUG: Web search returned {len(results)} results")
-        return "\n\n---\n\n".join(output)
-
-    except Exception as e:
-        return f"Search failed: {str(e)}"
 @tool
 def search_knowledge_base(query: str, config: RunnableConfig):
     """

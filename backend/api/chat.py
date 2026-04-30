@@ -123,9 +123,17 @@ def reasoner(state: MessagesState, config: RunnableConfig):
         if tools_allowed.get(tool.name, True):
             active_tools.append(tool)
 
-    if active_tools:
+    last_message = state["messages"][-1]
+    
+    # If the last message was a tool result, the Manager's only job is to synthesize.
+    if hasattr(last_message, 'type') and last_message.type == 'tool':
+        print("DEBUG: Tools just finished. Disarming Manager for final text synthesis.")
+        bound_llm = llm 
+        
+    elif active_tools:
         print(f"DEBUG: Binding tools: {[t.name for t in active_tools]}")
         bound_llm = llm.bind_tools(active_tools)
+        
     else:
         print("DEBUG: No tools allowed. Running as pure text LLM.")
         bound_llm = llm
@@ -154,19 +162,19 @@ def extract_citations(messages):
     Returns a list of {url, snippet} dicts.
     """
     citations = []
+    
+    # Check every message in the conversation history
     for msg in messages:
-        # ToolMessage has a .name attribute equal to the tool that produced it
-        if hasattr(msg, 'name') and msg.name == 'web_search':
-            blocks = msg.content.split('\n\n---\n\n')
-            for block in blocks:
-                url, snippet = '', ''
-                for line in block.split('\n'):
+        # We only care about AI messages or Tool responses that contain our special tag
+        if hasattr(msg, 'content') and isinstance(msg.content, str):
+            if 'SOURCE_URL::' in msg.content:
+                lines = msg.content.split('\n')
+                for line in lines:
                     if line.startswith('SOURCE_URL::'):
                         url = line.replace('SOURCE_URL::', '').strip()
-                    elif line.startswith('SNIPPET::'):
-                        snippet = line.replace('SNIPPET::', '').strip()
-                if url:
-                    citations.append({'url': url, 'snippet': snippet})
+                        if url and not any(c['url'] == url for c in citations): # Prevent duplicates
+                            citations.append({'url': url, 'snippet': "Web Research Source"})
+    
     return citations
 
 def grade_answer(question: str, answer: str) -> str:
@@ -418,10 +426,13 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
         base_prompt = (
             "You are a helpful assistant.\n"
             "You have the following tools available:\n"
-            f"{chr(10).join(tool_instructions)}\n" # chr(10) is just a clean way to write '\n' inside an f-string
+            f"{chr(10).join(tool_instructions)}\n"
             "STRICT RULES:\n"
             "- Call each tool AT MOST ONCE per user question.\n"
-            "- Once you have tool results, answer immediately. Do NOT search again."
+            "- For highly volatile real-time data (like weather, sports scores, and currency exchange rates), ALWAYS use the web_search tool. Do NOT guess.\n"
+            "- Once you have tool results, synthesize the information into a detailed, informative, and natural conversational response. Include helpful context and do not over-summarize.\n"
+            "- FORMATTING: Use bullet points, bold text, and line breaks to make your answer easy to read.\n"
+            "- CRITICAL: The web_search tool will return raw tags like 'SOURCE_URL::'. You MUST NOT include these URLs or tags in your final response to the user. The system UI will display the sources automatically."
         )
     else:
         base_prompt = (
@@ -496,6 +507,9 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
 
                 # on_chat_model_stream fires for every token the LLM generates,each event is type of dicteg.{"event": "on_chat_model_stream","data": {content,...}}
                 if event["event"] == "on_chat_model_stream":
+                    node_name = event.get("metadata", {}).get("langgraph_node", "")
+                    if node_name != "agent":
+                        continue
                     chunk = event["data"]["chunk"]
 
                     # Skip tool-call chunks (when model is deciding to call a tool)

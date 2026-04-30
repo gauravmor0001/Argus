@@ -98,10 +98,16 @@
                             <input type="text" id="userinput" placeholder="Message Argus..." autocomplete="off" />
                             <div class="chat-input-controls">
                                 <div class="chat-toggles">
-                                    <button type="button" id="toggle-kb" class="tool-toggle active" data-tool="search_knowledge_base">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-                                        Knowledge Base
-                                    </button>
+                                    <div class="kb-control-group" style="display: flex; gap: 6px; align-items: center;">
+                                        <button type="button" id="toggle-kb" class="tool-toggle active" data-tool="search_knowledge_base">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                                            Knowledge Base
+                                        </button>
+                                        
+                                        <select id="file-target-selector" class="tool-toggle dropdown-pill">
+                                            <option value="all">Search All Files</option>
+                                        </select>
+                                    </div>
                                     
                                     <button type="button" id="toggle-web" class="tool-toggle" data-tool="web_search">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
@@ -117,6 +123,9 @@
                                     </button>
                                 </div>
                             </div>
+                        </div>
+                        <div class="chat-footer">
+                            Argus is an AI and can make mistakes. Consider verifying important information.
                         </div>
                     </section>
                 </main>

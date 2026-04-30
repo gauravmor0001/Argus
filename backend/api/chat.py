@@ -29,6 +29,7 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     tools_allowed: Optional[dict] = None
+    target_file: Optional[str] = "all"
 
 MODEL_NAME = "llama-3.3-70b-versatile"
 llm = ChatGroq(
@@ -297,18 +298,40 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     except Exception as e:
         print(f"DEBUG: Memory Error: {e}")
 
-    base_prompt = (
-        "You are a helpful assistant. "
-        "You have three tools available:\n"
-        "1. 'search_knowledge_base' — use ONLY for questions about uploaded documents, resumes, or personal files.\n"
-        "2. 'web_search' — use ONLY for current events, news, or real-time information.\n\n"
-        "3. 'get_current_time'- return the time and date"
-        "STRICT RULES:\n"
-        "- Call each tool AT MOST ONCE per user question.\n"
-        "- NEVER call search_knowledge_base for general knowledge or news questions.\n"
-        "- NEVER call web_search for questions about uploaded documents.\n"
-        "- Once you have tool results, answer immediately. Do NOT search again." #will change this so we can get good resutls
-    )
+    # 1. Grab the user's toggles from the request (default to True if empty)
+    tools_allowed = request.tools_allowed if hasattr(request, 'tools_allowed') and request.tools_allowed else {}
+    kb_allowed = tools_allowed.get("search_knowledge_base", True)
+    web_allowed = tools_allowed.get("web_search", True)
+
+    # 2. Dynamically build the tool instructions list
+    tool_instructions = []
+    
+    if kb_allowed:
+        tool_instructions.append("- 'search_knowledge_base' — use this for ANY question about personal info, uploaded documents, or what you know about the user.")
+    
+    if web_allowed:
+        tool_instructions.append("- 'web_search' — use ONLY for current events, news, real-time information, weather, prices.")
+    
+    # We will assume time is always available since it doesn't cost tokens/API limits
+    tool_instructions.append("- 'get_current_time' — returns current date and time.")
+
+    # 3. Construct the base prompt based on what is active
+    if kb_allowed or web_allowed:
+        base_prompt = (
+            "You are a helpful assistant.\n"
+            "You have the following tools available:\n"
+            f"{chr(10).join(tool_instructions)}\n" # chr(10) is just a clean way to write '\n' inside an f-string
+            "STRICT RULES:\n"
+            "- Call each tool AT MOST ONCE per user question.\n"
+            "- Once you have tool results, answer immediately. Do NOT search again."
+        )
+    else:
+        # If the user turned EVERYTHING off, explicitly tell the AI to behave like a normal chatbot
+        base_prompt = (
+            "You are a helpful assistant.\n"
+            "The user has explicitly DISABLED all external search tools and document retrieval.\n"
+            "You must answer strictly based on your internal knowledge and the conversation history."
+        )
 
     if memories:
         SYSTEM_PROMPT = f"{base_prompt}\n\nCONTEXT FROM PREVIOUS CONVERSATIONS:\n{chr(10).join('- ' + m for m in memories)}\n\nUse this context ONLY if relevant. DO NOT repeat old answers."
@@ -377,20 +400,50 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
     except Exception as e:
         print(f"DEBUG: Memory Error: {e}")
 
-    base_prompt = (
-    "You are a helpful assistant. "
-    "You have three tools available:\n"
-    "1. 'search_knowledge_base' — use this for ANY question about the user's personal information, "
-    "uploaded documents, resumes, files, or when the user asks you to 'check your database', "
-    "'look up my data', or anything about what you know about them.\n"
-    "2. 'web_search' — use ONLY for current events, news, real-time information, weather, prices.\n"
-    "3. 'get_current_time' — returns current date and time.\n"
-    "STRICT RULES:\n"
-    "- Call each tool AT MOST ONCE per user question.\n"
-    "- When in doubt whether to search the knowledge base, DO search it.\n"  # ← new
-    "- NEVER call web_search for questions about uploaded documents.\n"
-    "- Once you have tool results, answer immediately. Do NOT search again."
-    )
+    tools_allowed = request.tools_allowed if hasattr(request, 'tools_allowed') and request.tools_allowed else {}
+    kb_allowed = tools_allowed.get("search_knowledge_base", True)
+    web_allowed = tools_allowed.get("web_search", True)
+
+    tool_instructions = []
+    
+    if kb_allowed:
+        tool_instructions.append("- 'search_knowledge_base' — use this for ANY question about personal info, uploaded documents, or what you know about the user.")
+    
+    if web_allowed:
+        tool_instructions.append("- 'web_search' — use ONLY for current events, news, real-time information, weather, prices.")
+
+    tool_instructions.append("- 'get_current_time' — returns current date and time.")
+
+    if kb_allowed or web_allowed:
+        base_prompt = (
+            "You are a helpful assistant.\n"
+            "You have the following tools available:\n"
+            f"{chr(10).join(tool_instructions)}\n" # chr(10) is just a clean way to write '\n' inside an f-string
+            "STRICT RULES:\n"
+            "- Call each tool AT MOST ONCE per user question.\n"
+            "- Once you have tool results, answer immediately. Do NOT search again."
+        )
+    else:
+        base_prompt = (
+            "You are a helpful assistant.\n"
+            "The user has explicitly DISABLED all external search tools and document retrieval.\n"
+            "You must answer strictly based on your internal knowledge and the conversation history."
+        )
+
+    # base_prompt = (
+    # "You are a helpful assistant. "
+    # "You have three tools available:\n"
+    # "1. 'search_knowledge_base' — use this for ANY question about the user's personal information, "
+    # "uploaded documents, resumes, files, or when the user asks you to 'check your database', "
+    # "'look up my data', or anything about what you know about them.\n"
+    # "2. 'web_search' — use ONLY for current events, news, real-time information, weather, prices.\n"
+    # "3. 'get_current_time' — returns current date and time.\n"
+    # "STRICT RULES:\n"
+    # "- Call each tool AT MOST ONCE per user question.\n"
+    # "- When in doubt whether to search the knowledge base, DO search it.\n"  # ← new
+    # "- NEVER call web_search for questions about uploaded documents.\n"
+    # "- Once you have tool results, answer immediately. Do NOT search again."
+    # )
 
     SYSTEM_PROMPT = (
         f"{base_prompt}\n\nCONTEXT FROM PREVIOUS CONVERSATIONS:\n"
@@ -407,13 +460,15 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
         tool_outputs = {}
         try:
             tools_allowed = request.tools_allowed or {}
+            target_file = getattr(request, 'target_file', 'all') or 'all'
             # astream_events fires events for EVERY node in the LangGraph
             async for event in agent_app.astream_events(
                 {"messages": input_messages},
                 config={
                     "configurable": {
                         "user_id": user_id,
-                        "tools_allowed": tools_allowed
+                        "tools_allowed": tools_allowed,
+                        "target_file": target_file
                     }
                 },
                 version="v2"  # required for the newer LangGraph versions

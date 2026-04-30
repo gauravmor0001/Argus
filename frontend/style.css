@@ -641,3 +641,36 @@ header {
     background-color: #2980b9;
     transform: scale(1.05);
 }
+
+.chat-footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #8e8ea0;
+    margin-top: 10px;
+    margin-bottom: 15px; 
+    padding: 0 10px;
+    font-family: inherit; /* Inherits your global font */
+}
+/* Specific styling for the new dropdown pill */
+.dropdown-pill {
+    appearance: none; /* Removes the default ugly arrow */
+    -webkit-appearance: none;
+    padding-right: 24px; /* Make room for a custom arrow */
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%23666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>');
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    cursor: pointer;
+    background-color: transparent;
+}
+
+/* When the dropdown is active/focused */
+.dropdown-pill:focus {
+    outline: none;
+    border-color: #0b79c7;
+    background-color: white;
+}
+
+/* A utility class to hide the dropdown when the KB tool is off */
+.hidden {
+    display: none !important;
+}

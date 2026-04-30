@@ -64,7 +64,10 @@ def search_knowledge_base(query: str, config: RunnableConfig):
     Returns the relevant text snippets from the files using a Hybrid (Dense+BM25) Advanced RAG pipeline.
     """
     user_id = config.get("configurable", {}).get("user_id")
-    print(f"DEBUG: Searching Knowledge Base for: '{query}',user:{user_id}")
+    target_file = config.get("configurable", {}).get("target_file", "all")
+    
+    print(f"DEBUG: Searching Knowledge Base for: '{query}', user: {user_id}, target_file: {target_file}")
+    
     try:
         vector_db = QdrantVectorStore.from_existing_collection(
             embedding=embedding_model,
@@ -73,15 +76,30 @@ def search_knowledge_base(query: str, config: RunnableConfig):
             url="http://localhost:6333",
             collection_name="learning-rag"
         )
-        user_filter = models.Filter(
-            must=[
+        
+        # 1. Build the mandatory conditions list (always filter by user_id!)
+        must_conditions = [
+            models.FieldCondition(
+                key="metadata.user_id",
+                match=models.MatchValue(value=user_id)
+            )
+        ]
+        
+        # 2. If a specific file is targeted, append it to the conditions
+        if target_file != "all":
+            must_conditions.append(
                 models.FieldCondition(
-                    key="metadata.user_id",
-                    match=models.MatchValue(value=user_id)
+                    key="metadata.filename",  # Make sure this matches the key you used when saving the document!
+                    match=models.MatchValue(value=target_file)
                 )
-            ]
-        )
-        initial_results = vector_db.similarity_search(query, k=15,filter=user_filter)
+            )
+            
+        # 3. Construct the final Qdrant filter
+        search_filter = models.Filter(must=must_conditions)
+
+        # 4. Execute the search with the dynamic filter
+        initial_results = vector_db.similarity_search(query, k=15, filter=search_filter)
+        
         if not initial_results:
             return "No relevant information found in the documents."
         

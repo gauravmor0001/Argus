@@ -28,6 +28,7 @@ function showMainInterface() {
     document.getElementById('main-container').style.display = 'block';
     document.getElementById('username-display').textContent = `Hello, ${currentUser}!`;
     loadConversations();
+    updateFileDropdown();
 }
 
 // === LOAD CONVERSATIONS ===
@@ -310,6 +311,9 @@ async function sendMessage() {
             "search_knowledge_base": document.getElementById('toggle-kb').classList.contains('active'),
             "web_search": document.getElementById('toggle-web').classList.contains('active')
         };
+        const targetFile = toolsAllowed.search_knowledge_base 
+            ? document.getElementById('file-target-selector').value 
+            : "all";
         const response = await fetch('http://127.0.0.1:5000/chat/stream', {
             method: 'POST',
             headers: {
@@ -319,7 +323,9 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 message: message,
-                conversation_id: currentConversationId
+                conversation_id: currentConversationId,
+                target_file: targetFile,
+                tools_allowed: toolsAllowed
             })
         });
 
@@ -642,6 +648,7 @@ async function uploadFile() {
         
         if (data.status === "success") {
             statusDiv.innerText = "✅ Knowledge Added!";
+            updateFileDropdown();
             statusDiv.style.color = "#4caf50";
             fileInput.value = ""; 
             
@@ -730,6 +737,7 @@ async function deleteFile(fileId) {
         if (data.status === "success") {
             // Reload the list to show it's gone
             loadUserFiles(); 
+            updateFileDropdown();
         } else {
             alert(`Error: ${data.message}`);
         }
@@ -822,3 +830,40 @@ async function deleteMemory(memoryId) {
         alert('Connection error while trying to delete memory.');
     }
 }
+
+// === UPDATE DROPDOWN ===
+async function updateFileDropdown() {
+    const selector = document.getElementById('file-target-selector');
+    if (!selector) return;
+
+    // Reset it back to just the default option
+    selector.innerHTML = '<option value="all">Search All Files</option>';
+
+    if (!authToken) return;
+
+    try {
+        const response = await fetch('http://127.0.0.1:5000/files', {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === "success" && data.files) {
+            data.files.forEach(file => {
+                const option = document.createElement('option');
+                option.value = file.filename; 
+                
+                // Truncate name if it's too long so it doesn't break the UI
+                const displayName = file.filename.length > 20 
+                    ? file.filename.substring(0, 20) + '...' 
+                    : file.filename;
+                    
+                option.textContent = displayName;
+                selector.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error fetching files for dropdown:', error);
+    }
+}
+

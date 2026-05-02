@@ -280,6 +280,8 @@ button:hover {
 
 .bot-message {
     color: #2c3e50;
+    white-space: pre-wrap; /* THIS IS THE MAGIC FIX */
+    line-height: 1.6;
 }
 
 .error-message {

@@ -126,6 +126,7 @@ def reasoner(state: MessagesState, config: RunnableConfig):
     last_message = state["messages"][-1]
     
     # If the last message was a tool result, the Manager's only job is to synthesize.
+    # but this does not help when we need to evaluate the tools response and try again so.
     if hasattr(last_message, 'type') and last_message.type == 'tool':
         print("DEBUG: Tools just finished. Disarming Manager for final text synthesis.")
         bound_llm = llm 
@@ -155,39 +156,31 @@ workflow.add_edge("tools", "agent")
 
 agent_app = workflow.compile()
 
-def extract_citations(messages):
-    """
-    Walks backwards through LangGraph messages looking for the web_search ToolMessage.
-    Parses out SOURCE_URL:: and SNIPPET:: lines we set in tools.py.
-    Returns a list of {url, snippet} dicts.
-    """
+def extract_citations(tool_text: str):
     citations = []
-    
-    # Check every message in the conversation history
-    for msg in messages:
-        # We only care about AI messages or Tool responses that contain our special tag
-        if hasattr(msg, 'content') and isinstance(msg.content, str):
-            if 'SOURCE_URL::' in msg.content:
-                lines = msg.content.split('\n')
-                for line in lines:
-                    if line.startswith('SOURCE_URL::'):
-                        url = line.replace('SOURCE_URL::', '').strip()
-                        if url and not any(c['url'] == url for c in citations): # Prevent duplicates
-                            citations.append({'url': url, 'snippet': "Web Research Source"})
-    
+    if not tool_text:
+        return citations
+        
+    blocks = tool_text.split('\n\n---\n\n')
+    for block in blocks:
+        url, snippet = '', ''
+        for line in block.split('\n'):
+            if line.startswith('SOURCE_URL::'):
+                url = line.replace('SOURCE_URL::', '').strip()
+            elif line.startswith('SNIPPET::'):
+                snippet = line.replace('SNIPPET::', '').strip()
+        
+        if url and not any(c['url'] == url for c in citations):
+            citations.append({'url': url, 'snippet': snippet or "Web Research Source"})
+            
     return citations
 
 def grade_answer(question: str, answer: str) -> str:
-    """
-    Sends a tiny grader prompt to the LLM.
-    Returns 'relevant' or 'not_relevant'.
-    This is a SEPARATE LLM call — the grader acts as a judge.
-    """
     grader_prompt = (
-        f"You are a strict grader. A user asked a question and an AI gave an answer.\n\n"
+        f"You are a grader. A user asked a question and an AI gave an answer.\n\n"
         f"Question: {question}\n"
         f"Answer: {answer}\n\n"
-        f"Does this answer directly and completely address the question?\n"
+        f"Does this answer address the question asked?\n"
         f"Reply with ONLY one word — either 'relevant' or 'not_relevant'. Nothing else."
     )
     try:
@@ -202,11 +195,8 @@ def grade_answer(question: str, answer: str) -> str:
     
 @router.get("/memories")
 async def get_user_memories(authorization: Optional[str] = Header(None)):
-    """Fetches all explicit facts and preferences Argus has memorized about the user."""
     try:
         user_id, username = verify_token(authorization)
-        
-        # Ask Mem0 to grab every memory attached to this user_id
         memories_data = mem_client.get_all(user_id=user_id)
         
         # Mem0 returns a slightly complex dictionary. We just want to extract 
@@ -233,13 +223,9 @@ async def get_user_memories(authorization: Optional[str] = Header(None)):
 
 @router.delete("/memories/{memory_id}")
 async def delete_user_memory(memory_id: str, authorization: Optional[str] = Header(None)):
-    """Deletes a specific memory from Mem0 and Qdrant."""
     try:
         user_id, username = verify_token(authorization)
-        
-        # Delete the specific memory by its ID
         mem_client.delete(memory_id=memory_id)
-        
         return {"status": "success", "message": "Memory erased."}
         
     except Exception as e:
@@ -396,7 +382,6 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
         if not conv_id:
             raise HTTPException(status_code=500, detail="Failed to create conversation")
 
-    # Same memory retrieval as your existing /chat
     memories = []
     try:
         search_results = mem_client.search(query=user_query, user_id=user_id, limit=3)
@@ -441,31 +426,17 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
             "You must answer strictly based on your internal knowledge and the conversation history."
         )
 
-    # base_prompt = (
-    # "You are a helpful assistant. "
-    # "You have three tools available:\n"
-    # "1. 'search_knowledge_base' — use this for ANY question about the user's personal information, "
-    # "uploaded documents, resumes, files, or when the user asks you to 'check your database', "
-    # "'look up my data', or anything about what you know about them.\n"
-    # "2. 'web_search' — use ONLY for current events, news, real-time information, weather, prices.\n"
-    # "3. 'get_current_time' — returns current date and time.\n"
-    # "STRICT RULES:\n"
-    # "- Call each tool AT MOST ONCE per user question.\n"
-    # "- When in doubt whether to search the knowledge base, DO search it.\n"  # ← new
-    # "- NEVER call web_search for questions about uploaded documents.\n"
-    # "- Once you have tool results, answer immediately. Do NOT search again."
-    # )
 
     SYSTEM_PROMPT = (
         f"{base_prompt}\n\nCONTEXT FROM PREVIOUS CONVERSATIONS:\n"
-        + "\n".join("- " + m for m in memories)
+        + "\n".join("- " + m for m in memories) 
         + "\n\nUse this context ONLY if relevant. DO NOT repeat old answers."
         if memories else base_prompt
     )
 
     input_messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_query)]
 
-    # This is the generator function that yields SSE chunks
+    # This is the generator function that generates SSE (Server-Sent Events)chunks
     async def generate():
         full_response = ""  # We accumulate the full response to save to DB after stream ends
         tool_outputs = {}
@@ -482,14 +453,14 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                         "target_file": target_file
                     }
                 },
-                version="v2"  # required for the newer LangGraph versions
+                version="v2" 
             ):
                 # fires the moment a tool starts — before results come back ──
                 if event["event"] == "on_tool_start":
                     tool_name = event.get("name", "")
 
                     if tool_name == "web_search":
-                        yield f"data: {json.dumps({'status': 'searching_web'})}\n\n"
+                        yield f"data: {json.dumps({'status': 'searching_web'})}\n\n" #its like yield sends what happend and then pauses until something happen again
 
                     elif tool_name == "search_knowledge_base":
                         yield f"data: {json.dumps({'status': 'searching_kb'})}\n\n"
@@ -502,7 +473,7 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                     tool_output = event["data"].get("output", "")
                     if hasattr(tool_output, 'content'):
                         tool_output = tool_output.content
-                    tool_outputs[tool_name] = tool_output   # save for citation parsing
+                    tool_outputs[tool_name] = tool_output 
 
 
                 # on_chat_model_stream fires for every token the LLM generates,each event is type of dicteg.{"event": "on_chat_model_stream","data": {content,...}}
@@ -521,28 +492,13 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                     if chunk.content:
                         token = chunk.content
                         full_response += token
-                        # Server-Sent Events (SSE) format: must be "data: ...\n\n"
                         yield f"data: {json.dumps({'token': token, 'conv_id': conv_id})}\n\n"
-            # yield f"data: {json.dumps({'done': True, 'conv_id': conv_id})}\n\n"
 
 
-            citations = []
-            if 'web_search' in tool_outputs:
-                blocks = tool_outputs['web_search'].split('\n\n---\n\n')
-                for block in blocks:
-                    url, snippet = '', ''
-                    for line in block.split('\n'):
-                        if line.startswith('SOURCE_URL::'):
-                            url = line.replace('SOURCE_URL::', '').strip()
-                        elif line.startswith('SNIPPET::'):
-                            snippet = line.replace('SNIPPET::', '').strip()
-                    if url:
-                        citations.append({'url': url, 'snippet': snippet})
+            citations = extract_citations(tool_outputs.get('web_search', ''))
 
-            # ── Grade the complete answer ──
             quality = grade_answer(user_query, full_response)
 
-            # ── Send the final "done" event with citations + quality ──
             yield f"data: {json.dumps({'done': True, 'conv_id': conv_id, 'citations': citations, 'quality': quality})}\n\n"
 
             try:

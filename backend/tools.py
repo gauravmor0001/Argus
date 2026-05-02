@@ -1,6 +1,5 @@
 from datetime import datetime
 from langchain_core.tools import tool
-# from langchain_community.tools import TavilySearchResults
 from langchain_tavily import TavilySearch 
 import wikipedia
 from langchain_qdrant import QdrantVectorStore, FastEmbedSparse, RetrievalMode
@@ -9,6 +8,7 @@ from sentence_transformers import CrossEncoder
 from langchain_core.runnables import RunnableConfig #secure back channel
 from qdrant_client.http import models #we can not simply say filter using user_id to qdrant, so to make the format of the filter we require this.
 from api.web_search import execute_web_research
+from api.research import run_deep_research
 
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
@@ -95,8 +95,27 @@ def search_knowledge_base(query: str, config: RunnableConfig):
     except Exception as e:
         return f"Error searching documents: {str(e)}"
 
+@tool
+def academic_research(topic: str) -> str:
+    """
+    CRITICAL: Use this tool ONLY when the user explicitly asks about:
+    - State-of-the-art (SOTA) in a field
+    - Writing a research paper
+    - Literature reviews
+    - Finding "gaps" in current research
+    
+    Pass the user's research topic into this tool, and a specialized 
+    Academic Agent will take over, search multiple databases, and write a full report.
+    """
+    report = run_deep_research(topic)
+    return (
+        f"RESEARCH REPORT COMPLETE. \n"
+        f"CRITICAL INSTRUCTION FOR AI: You MUST output the following text EXACTLY as it is written below. "
+        f"Do not summarize it. Do not add your own introduction. Just output this exact formatting:\n\n"
+        f"{report}"
+    )
 
-tools_list = [get_current_time , web_search,search_knowledge_base]
+tools_list = [get_current_time , web_search,search_knowledge_base,academic_research]
 
 #we have not given user_id to llm as to protect from prompt injection attack.as llm fills out the parameter of search_knowledge_base when the tool is called.
 #so we use config={"configurable": {"user_id": user_id}}

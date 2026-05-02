@@ -33,17 +33,38 @@ function showMainInterface() {
 }
 
 async function loadConversations() {
-    console.log('loadConversations called, currentConversationId:', currentConversationId); // ← ADD THIS
+    console.log('loadConversations called, currentConversationId:', currentConversationId); 
     try {
         const response = await fetch('http://127.0.0.1:5000/conversations', {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         
+        // === THE NEW FIX: Check if the server rejected us BEFORE reading data ===
+        if (!response.ok) {
+            if (response.status === 401) {
+                console.error('Session expired. Logging out...');
+                // Trigger your existing logout logic to send them back to the login screen
+                document.getElementById('logout-button').click(); 
+                return; // Stop the function here so it doesn't crash!
+            }
+            throw new Error(`Server error: ${response.status}`);
+        }
+        
         const data = await response.json();
-        console.log('Conversations loaded:', data.conversations.length); // ← ADD THIS
-        displayConversations(data.conversations);
+        
+        // Safely handle whatever format the backend sends
+        const conversationsList = data.conversations || (Array.isArray(data) ? data : []);
+        
+        console.log('Conversations loaded:', conversationsList.length); 
+        displayConversations(conversationsList);
+        
     } catch (error) {
         console.error('Error loading conversations:', error);
+        
+        const listContainer = document.getElementById('conversations-list');
+        if (listContainer) {
+            listContainer.innerHTML = '<p style="text-align:center;color:#ff4757;padding:20px;">Failed to load chats</p>';
+        }
     }
 }
 

@@ -11,13 +11,15 @@ import re #(regular expression)using it to find xml.
 import json
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage  #systemMessage is instruction to the model.
 from langchain_groq import ChatGroq
-from langgraph.graph import StateGraph, MessagesState, END
+from langgraph.graph import StateGraph,MessagesState, END
+from state import ArgusState
 from langgraph.prebuilt import ToolNode, tools_condition 
 from mem0 import Memory
 from tools import tools_list
 from fastapi.responses import StreamingResponse 
 import uuid
 from langchain_core.runnables import RunnableConfig
+from api.planner import complexity_detector, route_after_detection,planner_node, executor_node, synthesizer_node, route_after_executor
 
 
 load_dotenv()
@@ -144,16 +146,32 @@ def reasoner(state: MessagesState, config: RunnableConfig):
     return {"messages": [response]}
 
 
-workflow = StateGraph(MessagesState)
+workflow = StateGraph(ArgusState)
 workflow.add_node("agent", reasoner)
 workflow.add_node("tools", ToolNode(tools_list))
 workflow.add_node("normalize", normalize_tool_calls)
 
-workflow.set_entry_point("agent")
+workflow.add_node("complexity_detector", complexity_detector)
+workflow.add_node("planner", planner_node)
+workflow.add_node("executor", executor_node)
+workflow.add_node("synthesizer", synthesizer_node)
+
+workflow.set_entry_point("complexity_detector")
+workflow.add_conditional_edges("complexity_detector", route_after_detection, {
+    "agent": "agent", 
+    "planner": "planner"      
+})
+
 workflow.add_edge("agent", "normalize")
 workflow.add_conditional_edges("normalize", tools_condition) #tools condition is pre defined if the normalize node send a tool call it understnand and call the tool.
 workflow.add_edge("tools", "agent")
 
+workflow.add_edge("planner", "executor")
+workflow.add_conditional_edges("executor", route_after_executor, {
+    "executor": "executor",     
+    "synthesizer": "synthesizer" 
+})
+workflow.add_edge("synthesizer", END) 
 agent_app = workflow.compile()
 
 def extract_citations(tool_text: str):
@@ -417,7 +435,6 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
             "- For highly volatile real-time data (like weather, sports scores, and currency exchange rates), ALWAYS use the web_search tool. Do NOT guess.\n"
             "- Once you have tool results, synthesize the information into a detailed, informative, and natural conversational response. Include helpful context and do not over-summarize.\n"
             "- FORMATTING: Use bullet points, bold text, and line breaks to make your answer easy to read.\n"
-            "- CRITICAL: The web_search tool will return raw tags like 'SOURCE_URL::'. You MUST NOT include these URLs or tags in your final response to the user. The system UI will display the sources automatically."
         )
     else:
         base_prompt = (
@@ -479,7 +496,7 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                 # on_chat_model_stream fires for every token the LLM generates,each event is type of dicteg.{"event": "on_chat_model_stream","data": {content,...}}
                 if event["event"] == "on_chat_model_stream":
                     node_name = event.get("metadata", {}).get("langgraph_node", "")
-                    if node_name != "agent":
+                    if node_name not in ("agent", "synthesizer"):
                         continue
                     chunk = event["data"]["chunk"]
 

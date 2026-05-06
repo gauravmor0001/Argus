@@ -109,10 +109,10 @@ def academic_research(topic: str) -> str:
     """
     report = run_deep_research(topic)
     return (
-        f"RESEARCH REPORT COMPLETE. \n"
-        f"CRITICAL INSTRUCTION FOR AI: You MUST output the following text EXACTLY as it is written below. "
-        f"Do not summarize it. Do not add your own introduction. Just output this exact formatting:\n\n"
-        f"{report}"
+        "The Research Agent has compiled the following report. "
+        "Your ONLY task is to present this exact report to the user. "
+        "Do NOT add any greetings, summaries, or conclusions of your own. "
+        f"Just output this text:\n\n{report}"
     )
 
 tools_list = [get_current_time , web_search,search_knowledge_base,academic_research]

@@ -2,7 +2,7 @@ import os
 import requests
 import arxiv
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage,ToolMessage
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, MessagesState, END
@@ -171,23 +171,25 @@ def deduplicate_papers(raw_text: str) -> str:
 
     return "\n\n".join(unique_blocks)
 
-RESEARCHER_PROMPT = """You are a PhD-level Academic Research AI. Your job is to analyze literature and identify novel research opportunities for the user.
+RESEARCHER_PROMPT = """You are a PhD-level Academic Research AI. Your job is to analyze literature and identify novel research opportunities.
 
-You have access to Semantic Scholar (for highly cited SOTA papers) and ArXiv (for the newest pre-prints).
+STRICT RULE: Do NOT output any text or commentary before you have finished ALL your tool calls. Search all relevant databases first, then produce your final report.
 
-When the user gives you a topic, you MUST output your response in this EXACT format:
+Your final response MUST follow this structure EXACTLY, generated only ONCE:
 
-### 1. State of the Art (SOTA) Overview
-Summarize the current landscape of this topic based on the abstracts you retrieve. What are the dominant techniques right now?
+[Write 3 to 4 lines introducing the topic, defining what it is, and summarizing the general current state of the research.]
 
-### 2. Key Research Papers
-List the top 5-6 most relevant papers you found. Include the Title, Year, a 1-sentence summary of what they did, and the SOURCE_URL::[url].
+### These are the most relevant papers found:
 
-### 3. Limitations & Future Work
-Analyze the abstracts to identify what the current papers STRUGGLE with. What are the known limitations?
+**1. [Paper Title]** ([Year]) - [Link to Paper](URL)
+- **Covers:** [1-2 sentences explaining what this paper successfully achieved]
 
-### 4. Novel Research Opportunities (The "Gap")
-Based on the limitations above, give the user 2-3 specific, actionable ideas for a NEW research paper that has NOT been done yet. Tell them exactly how they could approach it.
+- **Lacks:** [1-2 sentences explaining the limitations, what it missed, or what it failed to solve]
+
+[Repeat the paper block for the top papers found, up to a maximum of 10. Put a blank line between each paper block.]
+
+### Conclusion & Novel Research Opportunities
+[Write 1-2 paragraphs identifying the overarching gaps across all these papers. Conclude by suggesting 2 to 3 specific, actionable new ideas that the user can work upon for their own novel research paper.]
 """
 
 research_llm = ChatGroq(
@@ -197,29 +199,61 @@ research_llm = ChatGroq(
 ).bind_tools(research_tools)
 
 def research_node(state: MessagesState):
-    """The thinking node for the Research Agent."""
+    """Only responsible for searching — never synthesizes."""
     messages = state["messages"]
-    
-    # Inject the system prompt if it's the first run
+
     if len(messages) > 0 and not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=RESEARCHER_PROMPT)] + messages
-        
-    # Prevent infinite loops (max 3 tool calls)
+
     tool_count = sum(1 for msg in messages if isinstance(msg, AIMessage) and msg.tool_calls)
     if tool_count >= 4:
-        print("[Research Agent] Max searches reached. Synthesizing...")
-        pure_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
-        return {"messages": [pure_llm.invoke(messages)]}
-        
-    print("[Research Agent] Analyzing academic data...")
+        # Signal to stop tool calling — return a plain message so tools_condition routes to END
+        return {"messages": [AIMessage(content="__RESEARCH_COMPLETE__")]}
+
+    print("[Research Agent] Fetching academic data...")
     return {"messages": [research_llm.invoke(messages)]}
+
+
+def synthesis_node(state: MessagesState):
+    """Always runs at the end to produce the clean formatted output."""
+    messages = state["messages"]
+
+    print("[Research Agent] Deduplicating and synthesizing final report...")
+    all_tool_text = " ".join(
+        msg.content for msg in messages if isinstance(msg, ToolMessage)
+    )
+    clean_context = deduplicate_papers(all_tool_text)
+
+    dedup_message = HumanMessage(
+        content=f"Here are the deduplicated research papers found. Now synthesize them per the required format:\n\n{clean_context}"
+    )
+    synthesis_messages = [SystemMessage(content=RESEARCHER_PROMPT), dedup_message]
+    pure_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
+    return {"messages": [pure_llm.invoke(synthesis_messages)]}
+
+
+def route_after_agent(state: MessagesState):
+    """Custom router: if research is complete, go to synthesis. Otherwise use tools."""
+    last_msg = state["messages"][-1]
+    if isinstance(last_msg, AIMessage):
+        if last_msg.content == "__RESEARCH_COMPLETE__":
+            return "synthesize"
+        if last_msg.tool_calls:
+            return "tools"
+    return "synthesize"  # LLM stopped calling tools on its own → still synthesize
+
 
 research_graph = StateGraph(MessagesState)
 research_graph.add_node("agent", research_node)
 research_graph.add_node("tools", ToolNode(research_tools))
+research_graph.add_node("synthesize", synthesis_node)   # <-- new node
 research_graph.set_entry_point("agent")
-research_graph.add_conditional_edges("agent", tools_condition)
+research_graph.add_conditional_edges("agent", route_after_agent, {
+    "tools": "tools",
+    "synthesize": "synthesize"
+})
 research_graph.add_edge("tools", "agent")
+research_graph.add_edge("synthesize", END)              # synthesize always ends
 research_app = research_graph.compile()
 
 def run_deep_research(topic: str) -> str:

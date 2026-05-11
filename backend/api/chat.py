@@ -12,7 +12,7 @@ import json
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage  #systemMessage is instruction to the model.
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph,MessagesState, END
-from state import ArgusState
+from api.state import ArgusState
 from langgraph.prebuilt import ToolNode, tools_condition 
 from mem0 import Memory
 from tools import tools_list
@@ -176,20 +176,20 @@ agent_app = workflow.compile()
 
 def extract_citations(tool_text: str):
     citations = []
-    if not tool_text:
-        return citations
-        
-    blocks = tool_text.split('\n\n---\n\n')
-    for block in blocks:
-        url, snippet = '', ''
-        for line in block.split('\n'):
-            if line.startswith('SOURCE_URL::'):
-                url = line.replace('SOURCE_URL::', '').strip()
-            elif line.startswith('SNIPPET::'):
-                snippet = line.replace('SNIPPET::', '').strip()
-        
-        if url and not any(c['url'] == url for c in citations):
-            citations.append({'url': url, 'snippet': snippet or "Web Research Source"})
+    if not tool_text: return citations
+    
+    current_snippet = "Web Research Source"
+    
+    for line in tool_text.split('\n'):
+        line = line.strip()
+        if line.startswith('SNIPPET::'):
+            current_snippet = line.replace('SNIPPET::', '').strip()
+        elif line.startswith('SOURCE_URL::'):
+            url = line.replace('SOURCE_URL::', '').strip()
+            # Append immediately so we don't overwrite it!
+            if url and not any(c['url'] == url for c in citations):
+                citations.append({'url': url, 'snippet': current_snippet})
+            current_snippet = "Web Research Source" # Reset for the next one
             
     return citations
 
@@ -432,9 +432,14 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
             f"{chr(10).join(tool_instructions)}\n"
             "STRICT RULES:\n"
             "- Call each tool AT MOST ONCE per user question.\n"
-            "- For highly volatile real-time data (like weather, sports scores, and currency exchange rates), ALWAYS use the web_search tool. Do NOT guess.\n"
-            "- Once you have tool results, synthesize the information into a detailed, informative, and natural conversational response. Include helpful context and do not over-summarize.\n"
-            "- FORMATTING: Use bullet points, bold text, and line breaks to make your answer easy to read.\n"
+            "- If you need to use a tool, DO NOT generate any conversational text before calling it. Output ONLY the tool call.\n"
+            "- For highly volatile real-time data, ALWAYS use the web_search tool. Do NOT guess.\n"
+            "- Once you have tool results, answer the user's question directly and concisely. Add a maximum of 1 or 2 lines of extra context. DO NOT write long essays or paragraphs.\n"
+            "- CRITICAL: DO NOT output any raw 'SOURCE_URL::' tags or raw URLs in your response text. The system extracts those automatically in the background.\n"
+            "- CRITICAL: When tool results are present in the conversation, you MUST base your answer ONLY on those results. NEVER override tool results with, your training knowledge. If a tool says X, your answer must say X."
+            "- SUGGESTIONS: At the very end of your response, ALWAYS add exactly 1 suggested follow-up question. Format it EXACTLY like this (NO spaces inside the asterisks):\n\n"
+            "**Try searching for:**\n"
+            "[Your Question Here]\n"
         )
     else:
         base_prompt = (
@@ -451,7 +456,21 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
         if memories else base_prompt
     )
 
-    input_messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_query)]
+    input_messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    if conv_id:
+        try:
+            conversation = db.get_conversation(conv_id, user_id)
+            if conversation and "messages" in conversation:
+                recent_messages = conversation["messages"][-10:]
+                for msg in recent_messages:
+                    if msg["role"] == "user":
+                        input_messages.append(HumanMessage(content=msg["content"]))
+                    elif msg["role"] == "assistant":
+                        input_messages.append(AIMessage(content=msg["content"]))
+        except Exception as e:
+            print(f"DEBUG: Failed to load conversation history: {e}")
+
+    input_messages.append(HumanMessage(content=user_query))
 
     # This is the generator function that generates SSE (Server-Sent Events)chunks
     async def generate():
@@ -472,8 +491,38 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                 },
                 version="v2" 
             ):
+                if event["event"] == "on_chain_start": #"on_chain_start" comes when a node start executing
+                    node_name = event.get("name", "")
+
+                    if node_name == "complexity_detector":
+                        yield f"data: {json.dumps({'status': 'analyzing'})}\n\n"
+
+                    elif node_name == "planner":
+                        yield f"data: {json.dumps({'status': 'Thinking'})}\n\n"
+
+                    elif node_name == "executor":
+                        # Read which tool is about to run from the event's input state
+                        input_data = event.get("data", {}).get("input", {})
+                        plan = input_data.get("plan", [])
+                        step_index = input_data.get("current_step_index", 0)
+
+                        if plan and step_index < len(plan):
+                            tool_name = plan[step_index].get("tool", "")
+                            purpose = plan[step_index].get("purpose", "")
+                            status_map = {
+                                "search_knowledge_base": "searching_kb",
+                                "web_search":            "searching_web",
+                                "academic_research":     "researching_papers"
+                            }
+                            status = status_map.get(tool_name, "executing")
+                            yield f"data: {json.dumps({'status': status, 'purpose': purpose})}\n\n"
+
+                    elif node_name == "synthesizer":
+                        yield f"data: {json.dumps({'status': 'synthesizing'})}\n\n"
+                        
                 # fires the moment a tool starts — before results come back ──
                 if event["event"] == "on_tool_start":
+                    full_response = ""
                     tool_name = event.get("name", "")
 
                     if tool_name == "web_search":

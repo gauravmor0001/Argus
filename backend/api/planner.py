@@ -99,6 +99,7 @@ def route_after_detection(state: ArgusState) -> str:
 PLANNER_PROMPT = """You are a task planner for an AI assistant. Your job is to break down a complex user query into an ordered sequence of tool calls.
 
 Available tools:
+-get_current_time: gives the current date and time
 - search_knowledge_base: searches the user's uploaded documents/notes/PDFs
 - web_search: searches the internet for real-time info and news
 - academic_research: searches multiple academic databases for research papers
@@ -272,12 +273,14 @@ SYNTHESIZER_PROMPT = """You are an expert AI assistant. You have been given a us
 Your job is to synthesize all the gathered information into a single, coherent, well-structured answer.
 
 Rules:
-1. Directly address the user's original question
+1. Directly address the user's original question concisely. Add a maximum of 1 or 2 sentences of extra context. DO NOT write long essays.
 2. Clearly distinguish between different sources (e.g. "According to your uploaded notes..." vs "Recent research papers show...")
-3. Highlight agreements AND contradictions between sources if they exist
+3. Highlight agreements AND contradictions between sources if they exist.
 4. Do NOT mention tool names like "search_knowledge_base" or "web_search" — refer to them naturally as "your documents", "recent research", "current news" etc.
-5. If a step failed or returned no results, acknowledge the gap briefly and move on
-6. Be concise but complete — do not pad the answer unnecessarily
+5. CRITICAL: DO NOT include raw 'SOURCE_URL::' tags in your text output.
+"- SUGGESTIONS: At the very end of your response, ALWAYS add exactly 1 suggested follow-up question. Format it EXACTLY like this (NO spaces inside the asterisks):\n\n"
+"**Try searching for:**\n"
+"1. [Your Question Here]\n"
 """
 
 def synthesizer_node(state: ArgusState) -> dict:

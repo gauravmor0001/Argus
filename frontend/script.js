@@ -225,7 +225,13 @@ function addMessageToUI(sender, text, className, citations = [], quality = 'rele
     senderSpan.textContent = sender + ": ";
 
     const textSpan = document.createElement('span');
-    textSpan.textContent = text;
+    if (className === 'bot-message') {
+        // Parse markdown for the bot
+        textSpan.innerHTML = marked.parse(text); 
+    } else {
+        // Keep plain text for the user
+        textSpan.textContent = text; 
+    }
 
     messageDiv.appendChild(senderSpan);
     messageDiv.appendChild(textSpan);
@@ -257,7 +263,7 @@ function addMessageToUI(sender, text, className, citations = [], quality = 'rele
         label.textContent = 'Sources:';
         citationContainer.appendChild(label);
 
-        citations.forEach((cite, i) => {
+        citations.slice(0, 5).forEach((cite, i) => {
             const pill = document.createElement('a');
             pill.href = cite.url;
             pill.target = '_blank';
@@ -327,6 +333,7 @@ async function sendMessage() {
     botDiv.appendChild(cursor);
     chatwindow.appendChild(botDiv);
     chatwindow.scrollTop = chatwindow.scrollHeight;
+    let fullBotMessage = "";
 
     try {
         const toolsAllowed = {
@@ -397,7 +404,11 @@ async function sendMessage() {
                         const messages = {
                             'searching_web': '🌐 Searching the internet...',
                             'searching_kb':  '📚 Searching your documents...',
-                            'getting_time':  '🕐 Getting current time...'
+                            'getting_time':  '🕐 Getting current time...',
+                            'analyzing':     '🧠 Analyzing your query..',
+                            'planning':      'Thinking',
+                            'synthesizing':  'Synthesizing all sources...',
+                            'researching_papers':'Finding papers'
                         };
                         const text = messages[parsed.status] || '⚙️ Working...';
 
@@ -423,9 +434,10 @@ async function sendMessage() {
                     }
 
                     if (parsed.token) {
-                        // Append this token to the visible message
-                        textSpan.textContent += parsed.token;
-                        chatwindow.scrollTop = chatwindow.scrollHeight; // auto-scroll
+                        fullBotMessage += parsed.token;
+                        // Parse the accumulated string into HTML
+                        textSpan.innerHTML = marked.parse(fullBotMessage);
+                        chatwindow.scrollTop = chatwindow.scrollHeight;
                     }
 
                     if (parsed.done) {
@@ -463,7 +475,7 @@ async function sendMessage() {
                             label.textContent = 'Sources:';
                             citationContainer.appendChild(label);
 
-                            citations.forEach((cite, i) => {
+                            citations.slice(0, 5).forEach((cite, i) => {
                                 const pill = document.createElement('a');
                                 pill.href = cite.url;
                                 pill.target = '_blank';

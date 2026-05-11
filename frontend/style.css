@@ -280,7 +280,6 @@ button:hover {
 
 .bot-message {
     color: #2c3e50;
-    white-space: pre-wrap; /* THIS IS THE MAGIC FIX */
     line-height: 1.6;
 }
 
@@ -765,4 +764,24 @@ header {
 /* Utility to hide elements */
 .hidden {
     display: none !important;
+}
+
+
+/* Markdown Formatting Elements */
+.bot-message p {
+    margin: 0 0 10px 0;
+}
+
+.bot-message p:last-child {
+    margin-bottom: 0;
+}
+
+.bot-message strong {
+    color: #1a252f;
+    font-weight: 700;
+}
+
+.bot-message ul, .bot-message ol {
+    margin: 10px 0;
+    padding-left: 20px;
 }

@@ -32,6 +32,10 @@ STRICT RULES:
 5. IMPORTANT FORMATTING: At the very end of your final response, you MUST list EVERY SINGLE source URL you gathered data from using this exact format on new lines:
 SOURCE_URL::https://example.com
 6. Do NOT put URLs directly inside the text of your paragraphs.
+CRITICAL RULE: Your answer must be based EXCLUSIVELY on the search results provided above.
+Do NOT use your training knowledge to answer — even if you believe you know the answer.
+If the search results say X, your answer must say X, regardless of what you were trained on.
+Extract the answer directly from the retrieved content.
 """
 
 @tool

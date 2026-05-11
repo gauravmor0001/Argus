@@ -244,16 +244,16 @@ def route_after_agent(state: MessagesState):
 
 
 research_graph = StateGraph(MessagesState)
-research_graph.add_node("agent", research_node)
+research_graph.add_node("research_agent", research_node)
 research_graph.add_node("tools", ToolNode(research_tools))
-research_graph.add_node("synthesize", synthesis_node)   # <-- new node
-research_graph.set_entry_point("agent")
-research_graph.add_conditional_edges("agent", route_after_agent, {
+research_graph.add_node("synthesize", synthesis_node) 
+research_graph.set_entry_point("research_agent")
+research_graph.add_conditional_edges("research_agent", route_after_agent, {
     "tools": "tools",
     "synthesize": "synthesize"
 })
-research_graph.add_edge("tools", "agent")
-research_graph.add_edge("synthesize", END)              # synthesize always ends
+research_graph.add_edge("tools", "research_agent")
+research_graph.add_edge("synthesize", END)             
 research_app = research_graph.compile()
 
 def run_deep_research(topic: str) -> str:

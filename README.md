@@ -59,11 +59,6 @@ Right-click and select "Open with Live Server" to launch the chat interface in y
 (Tip: Ensure your VS Code workspace ignores the local database files to prevent Live Server from automatically refreshing the page when the AI saves a message!)
 
 
-### future work:
-->Expand the Agent's Toolbelt: if we want to convert it to a full functional chatbot we have to make tools that can allow llm to do web search.
-->Advanced RAG (Hybrid Search):Standard cosine similarity struggles with exact keyword matches (like finding a specific serial number). Upgrading the Endee query to use Hybrid Search.
-->Total Containerization: Right now, only endee is in Docker, we can write a docker file for frontend and backend too.
-
 ### Project Showcase:
 
 **1. login Page(after registration then login with id password)**

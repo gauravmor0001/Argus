@@ -59,17 +59,17 @@ Right-click and select "Open with Live Server" to launch the chat interface in y
 (Tip: Ensure your VS Code workspace ignores the local database files to prevent Live Server from automatically refreshing the page when the AI saves a message!)
 
 
+**Architecture diagram**
+![Demo](backend/demo/architecture.jpg)
 ### Project Showcase:
 
 **1. login Page(after registration then login with id password)**
-![login](backend/login.png)
+![login](backend/demo/login.png)
 
 **2. First glance**
-![first](backend/firstthing.png)
+![first](backend/demo/firstthing.png)
 
 
 **3. Demo(upload your document and ask question)**
-![Demo](backend/Demo.png)
-
-
+![Demo](backend/demo/documents.png)
 

@@ -36,6 +36,23 @@ Respond with ONLY valid JSON, no extra text:
 }
 """
 
+DYNAMIC_QUERY_PROMPT = """You are an intelligent query formulation agent.
+Your job is to write the EXACT search query to pass into a specific tool.
+
+--- CONTEXT SO FAR ---
+{previous_results}
+----------------------
+
+The user's original goal: {original_query}
+The tool you are about to use: {tool_name}
+The purpose of this specific step: {purpose}
+
+Based on the context gathered so far, what is the best query to send to the '{tool_name}' tool to achieve this purpose?
+If the context already contains the facts you need to verify, make sure your new query includes those specific facts!
+
+Respond with ONLY the raw query string. No quotes, no markdown, no explanations.
+"""
+
 def complexity_detector(state: ArgusState) -> dict:
     """
     Entry point of the graph.
@@ -203,36 +220,63 @@ TOOL_MAP = {
 
 def executor_node(state: ArgusState, config: RunnableConfig) -> dict:
     """
-    Reads the current step from the plan, executes its tool, 
-    stores the result, and increments the step index.
+    Reads the current step, dynamically adjusts the query based on previous context,
+    executes the tool, and stores the result.
     """
     plan = state["plan"]
     current_index = state["current_step_index"]
     current_step = plan[current_index]
 
     tool_name = current_step["tool"]
-    query = current_step["query"]
+    original_planned_query = current_step["query"]
     purpose = current_step["purpose"]
 
-    print(f"[Executor] Running step {current_step['step_id']}: {tool_name}")
-    print(f"[Executor] Purpose: {purpose}")
+    print(f"\n[Executor] Running step {current_step['step_id']}: {tool_name}")
+    actual_query_to_run = original_planned_query
+    
+    if current_index > 0 and state.get("step_results"):
+        print(f"[Executor] Evaluating previous results to formulate a smarter query...")
+        
+        # Format the previous results into a readable string
+        context_blocks = []
+        for res in state["step_results"]:
+            context_blocks.append(f"- From {res['tool']}:\n{res['result'][:1000]}...")
+        previous_results_str = "\n".join(context_blocks)
+        
+        formatted_prompt = DYNAMIC_QUERY_PROMPT.format(
+            previous_results=previous_results_str,
+            original_query=state["original_query"],
+            tool_name=tool_name,
+            purpose=purpose
+        )
+        
+        try:
+            query_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.1)
+            response = query_llm.invoke([HumanMessage(content=formatted_prompt)])
+            actual_query_to_run = response.content.strip()
+            print(f"[Executor] Query upgraded from '{original_planned_query}' to '{actual_query_to_run}'")
+        except Exception as e:
+            print(f"[Executor] Dynamic query failed, falling back to original. Error: {e}")
+            actual_query_to_run = original_planned_query
 
     try:
         tool_fn = TOOL_MAP[tool_name]
 
         # search_knowledge_base needs config for user_id — others don't
         if tool_name == "search_knowledge_base":
-            result = tool_fn.invoke({"query": query}, config=config)
+            result = tool_fn.invoke({"query": actual_query_to_run}, config=config)
         else:
-            result = tool_fn.invoke({"query": query} if tool_name != "academic_research" else {"topic": query})
+            result = tool_fn.invoke(
+                {"query": actual_query_to_run} if tool_name != "academic_research" else {"topic": actual_query_to_run}
+            )
 
-        print(f"[Executor] Step {current_step['step_id']} complete.")
+        print(f"[Executor] Step {current_step['step_id']} complete with results:{result}")
 
     except Exception as e:
         result = f"Step failed: {str(e)}"
         print(f"[Executor] Step {current_step['step_id']} failed: {e}")
 
-    # Store result — operator.add in state means this APPENDS, not overwrites
+    # Store result
     step_result = {
         "step_id": current_step["step_id"],
         "tool": tool_name,
@@ -244,7 +288,6 @@ def executor_node(state: ArgusState, config: RunnableConfig) -> dict:
         "step_results": [step_result],       
         "current_step_index": current_index + 1 
     }
-
 
 def route_after_executor(state: ArgusState) -> str:
     """
@@ -333,3 +376,9 @@ Now write a complete, well-structured answer to the user's question using all th
         return {
             "messages": [AIMessage(content=f"I gathered the information but failed to synthesize it. Error: {str(e)}")]
         }
+    
+
+
+
+
+    

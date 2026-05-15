@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import os
 from dotenv import load_dotenv
@@ -32,6 +32,8 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = None
     tools_allowed: Optional[dict] = None
     target_file: Optional[str] = "all"
+
+
 
 MODEL_NAME = "llama-3.3-70b-versatile"
 llm = ChatGroq(
@@ -86,8 +88,6 @@ def normalize_tool_calls(state: MessagesState):
 
     content = last.content or ""
 
-    # ── Groq hard failure: it literally says it failed ──
-    # This happens when tool call JSON is so broken Groq gives up
     if "Failed to call a function" in content or "failed_generation" in content:
         print("DEBUG: Groq tool call generation failed — clearing bad tool_calls")
         # Replace with a clean message that tells the agent to answer directly
@@ -97,7 +97,10 @@ def normalize_tool_calls(state: MessagesState):
         )
         return {"messages": state["messages"]}
 
-    match = re.search(r'<function=([a-zA-Z0-9_\-]+)\s*(\{[\s\S]*?\})?>', content)
+    match = (
+    re.search(r'<function=([a-zA-Z0-9_\-]+)\s*(\{[\s\S]*?\})?>', content) or
+    re.search(r'<function=([a-zA-Z0-9_\-]+)(\{[\s\S]*?\})<\/function>', content)
+)
     if not match:
         return state
 
@@ -117,34 +120,61 @@ def normalize_tool_calls(state: MessagesState):
     return {"messages": state["messages"]}
 
 def reasoner(state: MessagesState, config: RunnableConfig):
-    """The main thinking node for the AI, with Dynamic Tool Binding."""
     tools_allowed = config.get("configurable", {}).get("tools_allowed", {})
-
-    active_tools = []
-    for tool in tools_list:
-        if tools_allowed.get(tool.name, True):
-            active_tools.append(tool)
-
+    active_tools = [t for t in tools_list if tools_allowed.get(t.name, True)]
     last_message = state["messages"][-1]
-    
-    # If the last message was a tool result, the Manager's only job is to synthesize.
-    # but this does not help when we need to evaluate the tools response and try again so.
+
     if hasattr(last_message, 'type') and last_message.type == 'tool':
-        print("DEBUG: Tools just finished. Disarming Manager for final text synthesis.")
-        bound_llm = llm 
-        
+        print("DEBUG: Tools just finished. Disarming for synthesis.")
+        bound_llm = llm
     elif active_tools:
         print(f"DEBUG: Binding tools: {[t.name for t in active_tools]}")
         bound_llm = llm.bind_tools(active_tools)
-        
     else:
-        print("DEBUG: No tools allowed. Running as pure text LLM.")
         bound_llm = llm
 
-    response = bound_llm.invoke(state["messages"])
-    
-    return {"messages": [response]}
+    try:
+        response = bound_llm.invoke(state["messages"])
 
+    except Exception as e:
+        error_body = getattr(e, 'body', {})
+        failed_gen = error_body.get('failed_generation', '') if isinstance(error_body, dict) else ''
+
+        print(f"[Reasoner] Groq tool call failed. Attempting manual normalization...")
+        print(f"[Reasoner] Failed generation: {failed_gen}")
+
+        # Try to salvage the broken XML tool call Groq generated    
+        match = re.search(r'<function=([a-zA-Z0-9_\-]+)\s*(\{[\s\S]*?\})?>', failed_gen)
+
+        if not match:
+            # Also try the format WITHOUT space: <function=name{...}</function>
+            match = re.search(r'<function=([a-zA-Z0-9_\-]+)(\{[\s\S]*?\})<\/function>', failed_gen)
+
+        if match:
+            tool_name = match.group(1)
+            args_raw  = match.group(2) if match.lastindex >= 2 else None
+            try:
+                args = json.loads(args_raw) if args_raw else {}
+            except Exception:
+                args = {}
+
+            print(f"[Reasoner] Salvaged tool call → tool={tool_name}, args={args}")
+            return {"messages": [AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": tool_name,
+                    "args": args,
+                    "id": f"call_{uuid.uuid4().hex[:8]}"
+                }]
+            )]}
+
+        print("[Reasoner] Could not salvage tool call. Answering directly.")
+        return {"messages": [AIMessage(
+            content="I had trouble using my tools. Could you rephrase your question?",
+            tool_calls=[]
+        )]}
+
+    return {"messages": [response]}
 
 workflow = StateGraph(ArgusState)
 workflow.add_node("agent", reasoner)
@@ -584,7 +614,7 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                 print(f"DEBUG: Failed to save to Mem0: {e}")
 
         except Exception as e:
-            # Send error to frontend so it doesn't hang forever
+            print(f"\n[STREAMING CRASHED] The generator caught an error: {str(e)}\n")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(

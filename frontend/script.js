@@ -317,7 +317,7 @@ async function sendMessage() {
     botDiv.className = 'message bot-message';
 
     const senderSpan = document.createElement('strong');
-    senderSpan.textContent = "Bot: ";
+    senderSpan.textContent = "Argus: ";
 
     const textSpan = document.createElement('span');
     textSpan.textContent = "";  // starts empty, tokens get appended here

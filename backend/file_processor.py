@@ -198,7 +198,8 @@ def process_and_ingest_document(file_obj,filename,embedding_model,sparse_embeddi
         splits=text_splitter.split_documents(all_docs)
 
         for split in splits:
-            split.metadata["user_id"]=user_id
+            split.metadata["user_id"] = user_id
+            split.metadata["filename"] = filename
 
         QdrantVectorStore.from_documents(
             splits,

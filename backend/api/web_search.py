@@ -1,6 +1,8 @@
 import os
 import json
 from dotenv import load_dotenv
+import re
+import uuid
 
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from langchain_core.tools import tool
@@ -37,6 +39,34 @@ Do NOT use your training knowledge to answer — even if you believe you know th
 If the search results say X, your answer must say X, regardless of what you were trained on.
 Extract the answer directly from the retrieved content.
 """
+
+def normalize_tool_calls(state: MessagesState):
+    """Fixes Groq's formatting to match LangChain's JSON expectation."""
+    last = state["messages"][-1]
+    if not isinstance(last, AIMessage):
+        return state
+
+    content = last.content or ""
+    if "Failed to call a function" in content or "failed_generation" in content:
+        state["messages"][-1] = AIMessage(content="I encountered an issue using my tools.", tool_calls=[])
+        return {"messages": state["messages"]}
+
+    match = re.search(r'<function=([a-zA-Z0-9_\-]+)\s*(\{[\s\S]*?\})?>', content)
+    if not match:
+        return state
+
+    tool_name = match.group(1)
+    args_raw = match.group(2)
+    try:
+        args = json.loads(args_raw) if args_raw else {}
+    except:
+        args = {}
+
+    state["messages"][-1] = AIMessage(
+        content=last.content,
+        tool_calls=[{"name": tool_name, "args": args, "id": f"call_{uuid.uuid4().hex[:8]}"}]
+    )
+    return {"messages": state["messages"]}
 
 @tool
 def web_search(query: str):
@@ -95,9 +125,10 @@ def researcher_node(state: MessagesState):
 builder = StateGraph(MessagesState)
 builder.add_node("web_researcher", researcher_node)
 builder.add_node("tools", ToolNode(tools_list))
-
+builder.add_node("normalize", normalize_tool_calls)
 builder.set_entry_point("web_researcher")
-builder.add_conditional_edges("web_researcher", tools_condition)
+builder.add_edge("web_researcher", "normalize")
+builder.add_conditional_edges("normalize", tools_condition)
 builder.add_edge("tools", "web_researcher")
 
 web_research_app = builder.compile()

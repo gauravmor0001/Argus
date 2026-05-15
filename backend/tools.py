@@ -9,12 +9,14 @@ from langchain_core.runnables import RunnableConfig #secure back channel
 from qdrant_client.http import models #we can not simply say filter using user_id to qdrant, so to make the format of the filter we require this.
 from api.web_search import execute_web_research
 from api.research import run_deep_research
-
+from pydantic import BaseModel, Field
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 sparse_embedding_model = FastEmbedSparse(model_name="Qdrant/bm25")
 reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2') #classification model (act as grader and gives score)
+class SearchKBInput(BaseModel):
+    query: str = Field(description="The exact search query to look up in the documents.")
 
 @tool
 def get_current_time():
@@ -33,12 +35,12 @@ def web_search(query: str):
     
     return research_report
 
-@tool
+@tool("search_knowledge_base", args_schema=SearchKBInput)
 def search_knowledge_base(query: str, config: RunnableConfig):
     """
-    Use this tool to search for information inside the uploaded PDF documents or text files.
-    Input should be a specific search query related to the documents.
-    Returns the relevant text snippets from the files using a Hybrid (Dense+BM25) Advanced RAG pipeline.
+    Use this to search the user's uploaded documents.
+    Pass only a search query string. Example: "main topics" or "key findings".
+    DO NOT pass filenames or file paths as arguments.
     """
     user_id = config.get("configurable", {}).get("user_id")
     target_file = config.get("configurable", {}).get("target_file", "all")

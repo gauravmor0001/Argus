@@ -76,48 +76,9 @@ function displayConversations(conversations) {
         listContainer.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">No conversations yet</p>';
         return;
     }
-    
-    const groups = {
-        today: [],
-        yesterday: [],
-        last7days: [],
-        older: []
-    };
-    
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    conversations.forEach(conv => {
-        const convDate = new Date(conv.updated_at);
-        const convDay = new Date(convDate.getFullYear(), convDate.getMonth(), convDate.getDate());
-        
-        if (convDay.getTime() === today.getTime()) {
-            groups.today.push(conv);
-        } else if (convDay.getTime() === yesterday.getTime()) {
-            groups.yesterday.push(conv);
-        } else if (convDay >= sevenDaysAgo) {
-            groups.last7days.push(conv);
-        } else {
-            groups.older.push(conv);
-        }
-    });
-    
-    if (groups.today.length > 0) {
-        listContainer.appendChild(createConversationGroup('Today', groups.today));
-    }
-    if (groups.yesterday.length > 0) {
-        listContainer.appendChild(createConversationGroup('Yesterday', groups.yesterday));
-    }
-    if (groups.last7days.length > 0) {
-        listContainer.appendChild(createConversationGroup('Last 7 Days', groups.last7days));
-    }
-    if (groups.older.length > 0) {
-        listContainer.appendChild(createConversationGroup('Older', groups.older));
-    }
+    const allChatsGroup = createConversationGroup('Recents', conversations);
+    const titleDiv = allChatsGroup.querySelector('.conversation-group-title');
+    listContainer.appendChild(allChatsGroup);
 }
 
 function createConversationGroup(title, conversations) {
@@ -298,8 +259,6 @@ function addMessageToUI(sender, text, className, citations = [], quality = 'rele
     chatwindow.scrollTop = chatwindow.scrollHeight;
     return textSpan;  // return so streaming can append to it
 }
-
-// === SEND MESSAGE ===
 async function sendMessage() {
     const userInput = document.getElementById('userinput');
     const message = userInput.value.trim();
@@ -311,7 +270,6 @@ async function sendMessage() {
     addMessageToUI("You", message, "user-message");
     userInput.value = "";
 
-    // 1. Create the bot message bubble immediately (empty, will fill live)
     const chatwindow = document.getElementById('chatwindow');
     const botDiv = document.createElement('div');
     botDiv.className = 'message bot-message';
@@ -332,7 +290,7 @@ async function sendMessage() {
     botDiv.appendChild(textSpan);
     botDiv.appendChild(cursor);
     chatwindow.appendChild(botDiv);
-    chatwindow.scrollTop = chatwindow.scrollHeight;
+    chatwindow.scrollTop = chatwindow.scrollHeight; //scrollTop gives us how much we are away from the top and scrollheight represent total height of all content.thi autoscoll for us.
     let fullBotMessage = "";
 
     try {
@@ -348,7 +306,6 @@ async function sendMessage() {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`,
-                tools_allowed: toolsAllowed
             },
             body: JSON.stringify({
                 message: message,
@@ -364,7 +321,7 @@ async function sendMessage() {
             return;
         }
 
-        // 3. Read the stream chunk by chunk
+        // Read the stream chunk by chunk
         const reader = response.body.getReader();
         const decoder = new TextDecoder(); // converts raw bytes → text
 
@@ -395,24 +352,20 @@ async function sendMessage() {
                         break;
                     }
                     if (parsed.status) {
-                        // Remove any existing status indicator first
-                        // (in case two tools run back to back)
                         const existing = botDiv.querySelector('.tool-status');
                         if (existing) existing.remove();
 
-                        // Build the indicator message
                         const messages = {
-                            'searching_web': '🌐 Searching the internet...',
-                            'searching_kb':  '📚 Searching your documents...',
-                            'getting_time':  '🕐 Getting current time...',
-                            'analyzing':     '🧠 Analyzing your query..',
+                            'searching_web': 'Searching the internet...',
+                            'searching_kb':  'Searching your documents...',
+                            'getting_time':  'Getting current time...',
+                            'analyzing':     'Analyzing your query..',
                             'planning':      'Thinking',
                             'synthesizing':  'Synthesizing all sources...',
                             'researching_papers':'Finding papers'
                         };
-                        const text = messages[parsed.status] || '⚙️ Working...';
+                        const text = messages[parsed.status] || 'Working...';
 
-                        // Create the animated status pill
                         const statusEl = document.createElement('div');
                         statusEl.className = 'tool-status';
                         statusEl.style.cssText = `
@@ -663,13 +616,12 @@ async function uploadFile() {
     if (!file) return;
 
     statusDiv.innerText = "⏳ Reading & Learning...";
-    statusDiv.style.color = "#FFD700"; // Gold
+    statusDiv.style.color = "#FFD700";
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-        // 2. Send to Backend
         const response = await fetch('http://127.0.0.1:5000/upload-doc', {
             method: 'POST',
             headers: {  
@@ -681,18 +633,18 @@ async function uploadFile() {
         const data = await response.json();
         
         if (data.status === "success") {
-            statusDiv.innerText = "✅ Knowledge Added!";
+            statusDiv.innerText = "Knowledge Added!";
             updateFileDropdown();
             statusDiv.style.color = "#4caf50";
             fileInput.value = ""; 
             
             setTimeout(() => { statusDiv.innerText = ""; }, 3000);
         } else {
-            statusDiv.innerText = "❌ Error: " + data.message;
+            statusDiv.innerText = "Error: " + data.message;
             statusDiv.style.color = "#f44336";
         }
     } catch (error) {
-        statusDiv.innerText = "❌ Server Error";
+        statusDiv.innerText = "Server Error";
         statusDiv.style.color = "#f44336";
         console.error('Upload error:', error);
     }
@@ -864,8 +816,6 @@ async function deleteMemory(memoryId) {
         alert('Connection error while trying to delete memory.');
     }
 }
-
-// === UPDATE DROPDOWN ===
 async function updateFileDropdown() {
     const selector = document.getElementById('file-target-selector');
     if (!selector) return;
@@ -886,8 +836,6 @@ async function updateFileDropdown() {
             data.files.forEach(file => {
                 const option = document.createElement('option');
                 option.value = file.filename; 
-                
-                // Truncate name if it's too long so it doesn't break the UI
                 const displayName = file.filename.length > 20 
                     ? file.filename.substring(0, 20) + '...' 
                     : file.filename;
@@ -925,4 +873,9 @@ function toggleWelcomeScreen(show) {
         // Remove the class to drop the input box to the bottom
         chatbox.classList.remove('centered-state'); 
     }
+}
+function sendSuggestion(text) {
+    const inputElement = document.getElementById('userinput');
+    inputElement.value = text;
+    sendMessage();
 }

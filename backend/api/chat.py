@@ -409,7 +409,7 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         return {"response": ai_response,
                  "conversation_id": conv_id,
                  "citations": citations,        # e.g. [{"url": "...", "snippet": "..."}]
-                "quality": quality}
+                }
         
     except Exception as e:
         error_msg = str(e)
@@ -424,7 +424,6 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
     user_query = request.message
     conv_id = request.conversation_id
 
-    # Create new conversation if none provided
     if not conv_id:
         conv_id = db.create_conversation(user_id)
         if not conv_id:
@@ -593,9 +592,9 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
 
             citations = extract_citations(tool_outputs.get('web_search', ''))
 
-            quality = grade_answer(user_query, full_response)
+            # quality = grade_answer(user_query, full_response)
 
-            yield f"data: {json.dumps({'done': True, 'conv_id': conv_id, 'citations': citations, 'quality': quality})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'conv_id': conv_id, 'citations': citations,})}\n\n"
 
             try:
                 db.add_message_to_conversation(conv_id, user_id, user_query, full_response)

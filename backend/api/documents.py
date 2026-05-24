@@ -19,7 +19,7 @@ sparse_embedding_model = FastEmbedSparse(
 
 @router.post("/upload-doc")
 async def upload_and_ingest(
-    file: UploadFile=File(...),
+    file: UploadFile=File(...), #here the "file:" is the variable name the frontend is sending(should match the fronted)-> formData.append("file", selectedFile);
     authorization: Optional[str]=Header(None) #this checks if authorization(metadata header in http) is present or not.if yes user is loged in.the authorization string looks like "Bearer ....."this is a JWT.
     ):
         try:
@@ -48,7 +48,6 @@ async def get_user_files(authorization: Optional[str] = Header(None)):
     try:
         user_id, username = verify_token(authorization)
         
-        # Fetch the files from our new SQL table
         files = db.get_files(user_id)
         
         return {"status": "success", "files": files}
@@ -68,8 +67,6 @@ async def delete_user_file(file_id: str, authorization: Optional[str] = Header(N
         if not filename:
             return {"status": "error", "message": "File not found or unauthorized"}
         
-        # Note: In your file_processor, the file is saved as 'temp_filename.pdf' 
-        # so the Langchain metadata automatically sets the source to that exact string.
         source_name = f"temp_{filename}" 
         
         client = QdrantClient(url="http://localhost:6333")

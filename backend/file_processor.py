@@ -37,7 +37,7 @@ def extract_images_and_ocr(pdf_path: str, user_id: str) -> list[Document]:
             image_list = page.get_images(full=True)
 
             if not image_list:
-                continue   # no images on this page, skip
+                continue
 
             print(f"DEBUG: Page {page_num + 1} has {len(image_list)} image(s)")
 
@@ -173,9 +173,8 @@ def process_and_ingest_document(file_obj,filename,embedding_model,sparse_embeddi
             else:
                 # Normal PDF — add text content AND extract embedded images
                 print(f"DEBUG: Normal PDF — extracting text + embedded images")
-                all_docs.extend(text_docs)
+                all_docs.extend(text_docs) #we can directly add it in as the pyPDFLoader.load() returns us the list[documents] that matches the format of how we are storing the images and scanned documents
 
-                # ── Step 3 (NEW): Extract images and OCR them ──
                 image_ocr_docs = extract_images_and_ocr(temp_filename, user_id)
                 all_docs.extend(image_ocr_docs)
 

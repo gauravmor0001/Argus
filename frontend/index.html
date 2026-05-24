@@ -71,14 +71,14 @@
                             ⚙️ Manage Files
                         </button>
                         <button class="managefiles" onclick="openMemoryManager()">
-                            What I Know About You
+                            About You
                         </button>   
                         
                         <div id="uploadStatus" style="font-size: 11px; margin-top: 8px; text-align: center; min-height: 15px;"></div>
                     </div>
                     
                     
-                    <div class="conversations-list" id="conversations-list">Chat History</div>
+                    <div class="conversations-list" id="conversations-list">Recents</div>
 
                     <div class="sidebar-footer">
                         <button id="logout-button" class="logout-button">
@@ -98,15 +98,39 @@
                             <!-- THE WELCOME SCREEN -->
                             <div id="welcome-screen" class="welcome-screen">
                                 <h1 id="welcome-greeting" class="greeting-text">Hi there</h1>
-                                <h2 class="greeting-subtext">Where should we start?</h2>
+                                <h2 class="greeting-subtext">What would you like to do today?</h2>
                                 
-                                <!-- Optional Suggestion Chips -->
-                                <div class="suggestion-chips">
-                                    <button class="chip" onclick="document.getElementById('userinput').value='Summarize my recent files...';">
-                                        📄 Summarize Files
+                                <div class="suggestion-grid">
+                                    <button class="suggestion-card" onclick="sendSuggestion('Summarize the key points in my uploaded documents.')">
+                                        <div class="card-icon">📚</div>
+                                        <div class="card-text">
+                                            <span class="card-title">Read & Summarize</span>
+                                            <span class="card-desc">Chat with your uploaded PDFs</span>
+                                        </div>
                                     </button>
-                                    <button class="chip" onclick="document.getElementById('userinput').value='What is the latest news on...';">
-                                        🌐 Search Web
+
+                                    <button class="suggestion-card" onclick="sendSuggestion('What is the latest news regarding Artificial Intelligence?')">
+                                        <div class="card-icon">🌐</div>
+                                        <div class="card-text">
+                                            <span class="card-title">Search the Web</span>
+                                            <span class="card-desc">Get real-time answers and news</span>
+                                        </div>
+                                    </button>
+
+                                    <button class="suggestion-card" onclick="sendSuggestion('Find the latest research papers on Quantum Computing.')">
+                                        <div class="card-icon">🔬</div>
+                                        <div class="card-text">
+                                            <span class="card-title">Academic Research</span>
+                                            <span class="card-desc">Discover and analyze SOTA papers</span>
+                                        </div>
+                                    </button>
+
+                                    <button class="suggestion-card" onclick="sendSuggestion('What do you remember about me and my projects?')">
+                                        <div class="card-icon">🧠</div>
+                                        <div class="card-text">
+                                            <span class="card-title">Long-term Memory</span>
+                                            <span class="card-desc">Ask Argus what it knows about you</span>
+                                        </div>
                                     </button>
                                 </div>
                             </div>
@@ -127,7 +151,7 @@
                                         </select>
                                     </div>
                                     
-                                    <button type="button" id="toggle-web" class="tool-toggle" data-tool="web_search">
+                                    <button type="button" id="toggle-web" class="tool-toggle active" data-tool="web_search">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
                                         Web Search
                                     </button>

@@ -56,7 +56,6 @@ def search_knowledge_base(query: str, config: RunnableConfig):
             collection_name="learning-rag"
         )
         
-        # 1. Build the mandatory conditions list (always filter by user_id!)
         must_conditions = [
             models.FieldCondition(
                 key="metadata.user_id",
@@ -64,20 +63,16 @@ def search_knowledge_base(query: str, config: RunnableConfig):
             )
         ]
         
-        # 2. If a specific file is targeted, append it to the conditions
         if target_file != "all":
             must_conditions.append(
                 models.FieldCondition(
-                    key="metadata.filename",  # Make sure this matches the key you used when saving the document!
+                    key="metadata.filename", 
                     match=models.MatchValue(value=target_file)
                 )
             )
             
-        # 3. Construct the final Qdrant filter
         search_filter = models.Filter(must=must_conditions)
-
-        # 4. Execute the search with the dynamic filter
-        initial_results = vector_db.similarity_search(query, k=15, filter=search_filter)
+        initial_results = vector_db.similarity_search(query, k=15, filter=search_filter) #this also gives us the list[documents].
         
         if not initial_results:
             return "No relevant information found in the documents."
@@ -90,7 +85,7 @@ def search_knowledge_base(query: str, config: RunnableConfig):
         scored_docs.sort(key=lambda x: x[1], reverse=True)
         top_3_docs = scored_docs[:3]
 
-        print(f"DEBUG: Top snippet score after re-ranking: {top_3_docs[0][1]:.2f}")
+        print(f"DEBUG: Top snippet score after re-ranking: {top_3_docs[0][1]:.2f}") #value:.2f helps us to see only 2 digits after decimal.
         context = "\n\n".join([f"Snippet: {doc[0].page_content}" for doc in top_3_docs])
         return context
 

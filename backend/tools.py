@@ -10,6 +10,7 @@ from qdrant_client.http import models #we can not simply say filter using user_i
 from api.web_search import execute_web_research
 from api.research import run_deep_research
 from pydantic import BaseModel, Field
+import os
 embedding_model = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
@@ -52,7 +53,8 @@ def search_knowledge_base(query: str, config: RunnableConfig):
             embedding=embedding_model,
             sparse_embedding=sparse_embedding_model,
             retrieval_mode=RetrievalMode.HYBRID,
-            url="http://localhost:6333",
+            url=os.getenv("qdrant_url"),         
+            api_key=os.getenv("qdrant_cloud_key")
             collection_name="learning-rag"
         )
         

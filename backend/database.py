@@ -1,26 +1,31 @@
-import sqlite3
+import libsql_experimental as libsql  # REPLACED sqlite3
 import bcrypt
 import uuid
 from datetime import datetime
 import json
 import os
+from dotenv import load_dotenv  # ADDED to read .env file
+
+load_dotenv()
 
 class UserDatabase:
-    def __init__(self, db_path=None):
-        if db_path is None:
-            # This automatically finds the 'data/users.db' folder next to this file
-            self.db_path = os.path.join(os.path.dirname(__file__), "data", "users.db")
-        else:
-            self.db_path = db_path
-            
-        # Create the 'data' folder if it doesn't exist yet
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+    def __init__(self):
+        # Grab cloud credentials from .env
+        self.db_url = os.getenv("TURSO_DATABASE_URL")
+        self.auth_token = os.getenv("TURSO_AUTH_TOKEN")
         
+        if not self.db_url or not self.auth_token:
+            print("WARNING: Turso credentials missing. Check your .env file.")
+            
         self.init_database()
+        
+    def get_connection(self):
+        """Helper function to cleanly connect to the cloud database"""
+        return libsql.connect(self.db_url, auth_token=self.auth_token)
     
     def init_database(self):
-        conn=sqlite3.connect(self.db_path)
-        cursor=conn.cursor()
+        conn = self.get_connection()
+        cursor = conn.cursor()
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -56,20 +61,19 @@ class UserDatabase:
         conn.commit()
         conn.close()
 
-    def create_user(self,username,password):
+    def create_user(self, username, password):
         try:
-            conn=sqlite3.connect(self.db_path)
-            cursor=conn.cursor()
+            conn = self.get_connection()
+            cursor = conn.cursor()
 
-            cursor.execute("SELECT id FROM users WHERE username= ?",(username,))
-            if cursor.fetchone(): #check we something is returned
+            cursor.execute("SELECT id FROM users WHERE username= ?", (username,))
+            if cursor.fetchone(): 
                 conn.close()
                 return False, "Username already exists", None
             
-            user_id=str(uuid.uuid4())
+            user_id = str(uuid.uuid4())
 
-            password_hash=bcrypt.hashpw(password.encode('utf-8'),bcrypt.gensalt())
-            # password.encode convert string into bytes,bcrypt needs bytes
+            password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
             cursor.execute('''
                 INSERT INTO users (id, username, password_hash, created_at)
@@ -86,12 +90,10 @@ class UserDatabase:
             return False, f"Error: {str(e)}", None
             
     def verify_user(self, username, password):
-        """..."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Find user by username
             cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,))
             result = cursor.fetchone()
             
@@ -114,7 +116,7 @@ class UserDatabase:
         
     def get_user_by_id(self, user_id):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
@@ -132,16 +134,16 @@ class UserDatabase:
         
     def create_conversation(self, user_id, title="New Chat"):
         try:
-            conn=sqlite3.connect(self.db_path)
-            cursor=conn.cursor()
+            conn = self.get_connection()
+            cursor = conn.cursor()
 
-            conv_id=str(uuid.uuid4())
-            now=datetime.now().isoformat()
+            conv_id = str(uuid.uuid4())
+            now = datetime.now().isoformat()
 
             cursor.execute('''
-                INSERT INTO conversations(id, user_id,title,created_At,updated_At,messages)
+                INSERT INTO conversations(id, user_id, title, created_At, updated_At, messages)
                 VALUES(?,?,?,?,?,?)
-            ''',(conv_id,user_id,title,now,now,json.dumps([])))
+            ''', (conv_id, user_id, title, now, now, json.dumps([])))
             
             conn.commit()
             conn.close()
@@ -151,11 +153,10 @@ class UserDatabase:
             print(f"❌ Error creating conversation: {e}")
             return None
         
-    
     def get_conversations(self, user_id):
         """Get all conversations for a user"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -179,10 +180,11 @@ class UserDatabase:
         except Exception as e:
             print(f"❌ Error fetching conversation: {e}")
             return None
+
     def get_conversation(self, conv_id, user_id):
         """Get a specific conversation with messages"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -211,7 +213,7 @@ class UserDatabase:
     def add_message_to_conversation(self, conv_id, user_id, user_msg, bot_msg):
         """Add a message pair to a conversation"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             # Get current messages
@@ -254,7 +256,7 @@ class UserDatabase:
     def delete_conversation(self, conv_id, user_id):
         """Delete a conversation"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('DELETE FROM conversations WHERE id = ? AND user_id = ?', 
@@ -268,11 +270,10 @@ class UserDatabase:
             print(f"❌ Error deleting conversation: {e}")
             return False
         
-
     def add_file(self, user_id, filename):
         """Records a successfully uploaded file in the database."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             file_id = str(uuid.uuid4())
             now = datetime.now().isoformat()
@@ -292,7 +293,7 @@ class UserDatabase:
     def get_files(self, user_id):
         """Fetches all tracked files for a specific user."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -319,7 +320,7 @@ class UserDatabase:
     def delete_file_record(self, file_id, user_id):
         """Deletes the SQL record and returns the filename so Qdrant knows what to delete."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.get_connection()
             cursor = conn.cursor()
             
             # Get the filename first before we delete the row
@@ -341,4 +342,3 @@ class UserDatabase:
         except Exception as e:
             print(f"❌ Error deleting file record: {e}")
             return None
-            

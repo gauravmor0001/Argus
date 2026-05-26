@@ -1,9 +1,7 @@
-// === AUTHENTICATION STATE ===
 let authToken = null;
 let currentUser = null;
 let currentConversationId = null;
 
-// === AUTH UI FUNCTIONS ===
 function showLogin() {
     document.getElementById('login-tab').classList.add('active');
     document.getElementById('register-tab').classList.remove('active');
@@ -23,7 +21,7 @@ function showRegister() {
 }
 
 function showMainInterface() {
-     console.log('showMainInterface called'); // ← ADD THIS
+    console.log('showMainInterface called');
     document.getElementById('auth-container').style.display = 'none';
     document.getElementById('main-container').style.display = 'block';
     document.getElementById('username-display').textContent = `Hello, ${currentUser}!`;
@@ -852,15 +850,11 @@ async function updateFileDropdown() {
 function toggleWelcomeScreen(show) {
     const welcomeScreen = document.getElementById('welcome-screen');
     const chatWindow = document.getElementById('chatwindow');
-    
-    // Grab the main chatbox container
     const chatbox = document.querySelector('.chatbox'); 
     
     if (show) {
         welcomeScreen.classList.remove('hidden');
         chatWindow.classList.add('hidden');
-        
-        // Add the class to push everything to the center
         chatbox.classList.add('centered-state'); 
         
         if (typeof currentUser !== 'undefined') {
@@ -869,8 +863,6 @@ function toggleWelcomeScreen(show) {
     } else {
         welcomeScreen.classList.add('hidden');
         chatWindow.classList.remove('hidden');
-        
-        // Remove the class to drop the input box to the bottom
         chatbox.classList.remove('centered-state'); 
     }
 }

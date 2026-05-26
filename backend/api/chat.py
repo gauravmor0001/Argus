@@ -72,8 +72,9 @@ config = {
     "vector_store": {
         "provider": "chroma",
         "config": {
-            "collection_name": "chat_memory",
-            "path": "./memory_db" # This creates a folder named memory_db 
+            "collection_name": "argus_memory",  
+            "url": os.getenv("qdrant_url"),
+            "api_key": os.getenv("qdrant_cloud_key")
         }
     }
 }

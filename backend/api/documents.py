@@ -7,7 +7,7 @@ from langchain_qdrant import FastEmbedSparse
 from database import UserDatabase
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-
+import os
 router = APIRouter()
 db = UserDatabase()
 embedding_model = HuggingFaceEmbeddings(
@@ -69,7 +69,10 @@ async def delete_user_file(file_id: str, authorization: Optional[str] = Header(N
         
         source_name = f"temp_{filename}" 
         
-        client = QdrantClient(url="http://localhost:6333")
+        client = QdrantClient(
+            url=os.getenv("qdrant_url"),        
+            api_key=os.getenv("qdrant_cloud_key") 
+        )
         
         client.delete(
             collection_name="learning-rag",

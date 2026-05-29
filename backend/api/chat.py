@@ -8,19 +8,19 @@ from dotenv import load_dotenv
 from database import UserDatabase
 from api.auth import verify_token
 
-import re #(regular expression)using it to find xml.
+import re  # (regular expression) using it to find xml.
 import json
-from langchain_core.messages import AIMessage, SystemMessage, HumanMessage  #systemMessage is instruction to the model.
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage  # systemMessage is instruction to the model.
 from langchain_groq import ChatGroq
-from langgraph.graph import StateGraph,MessagesState, END
+from langgraph.graph import StateGraph, MessagesState, END
 from api.state import ArgusState
-from langgraph.prebuilt import ToolNode, tools_condition 
+from langgraph.prebuilt import ToolNode, tools_condition
 from mem0 import Memory
 from tools import tools_list
-from fastapi.responses import StreamingResponse 
+from fastapi.responses import StreamingResponse
 import uuid
 from langchain_core.runnables import RunnableConfig
-from api.planner import complexity_detector, route_after_detection,planner_node, executor_node, synthesizer_node, route_after_executor
+from api.planner import complexity_detector, route_after_detection, planner_node, executor_node, synthesizer_node, route_after_executor
 
 
 load_dotenv()
@@ -35,16 +35,18 @@ class ChatRequest(BaseModel):
     target_file: Optional[str] = "all"
 
 
-
 MODEL_NAME = "llama-3.3-70b-versatile"
 llm = ChatGroq(
-    model=MODEL_NAME, 
+    model=MODEL_NAME,
     api_key=os.getenv("GROQ_API_KEY"),
     temperature=0.3,
 )
 llm_with_tools = llm.bind_tools(tools_list)
 
-config = {
+# CHANGE 1: Fixed vector_store provider from "chroma" to "qdrant".
+# Previously this was "chroma" which caused mem0 to try importing chromadb
+# (which is not installed), crashing the entire server on startup.
+mem0_config = {
     "version": "v1.1",
     "custom_prompt": (
         "You are a memory extraction assistant. Analyze the conversation and extract "
@@ -63,7 +65,7 @@ config = {
             "model": "sentence-transformers/all-MiniLM-L6-v2"
         }
     },
-    "llm": { #decide what mem0 will remember about user and its prefrences.
+    "llm": {  # decide what mem0 will remember about user and its preferences.
         "provider": "groq",
         "config": {
             "api_key": os.getenv("GROQ_API_KEY"),
@@ -71,17 +73,30 @@ config = {
         }
     },
     "vector_store": {
-        "provider": "chroma",
+        "provider": "qdrant",       # FIXED: was "chroma", now correctly "qdrant"
         "config": {
-            "collection_name": "argus_memory",  
+            "collection_name": "argus_memory",
             "url": os.getenv("qdrant_url"),
             "api_key": os.getenv("qdrant_cloud_key")
         }
     }
 }
 
-print("DEBUG: Connecting to Mem0 Memory...")
-mem_client = Memory.from_config(config)
+# CHANGE 2: Lazy loading for mem0 Memory client.
+# Previously Memory.from_config() ran at module import time (line 84),
+# which blocked uvicorn from binding the port on Render, causing deploy failure.
+# Now it only initializes on the first actual request that needs it.
+_mem_client = None
+
+def get_mem_client():
+    global _mem_client
+    if _mem_client is None:
+        print("DEBUG: Connecting to Mem0 Memory...")
+        _mem_client = Memory.from_config(mem0_config)
+        print("DEBUG: Mem0 ready.")
+    return _mem_client
+
+
 def normalize_tool_calls(state: MessagesState):
     """Fixes Groq's XML tool formatting to match LangChain's JSON expectation."""
     last = state["messages"][-1]
@@ -92,7 +107,6 @@ def normalize_tool_calls(state: MessagesState):
 
     if "Failed to call a function" in content or "failed_generation" in content:
         print("DEBUG: Groq tool call generation failed — clearing bad tool_calls")
-        # Replace with a clean message that tells the agent to answer directly
         state["messages"][-1] = AIMessage(
             content="I encountered an issue using my tools. Let me answer based on what I know.",
             tool_calls=[]
@@ -100,9 +114,9 @@ def normalize_tool_calls(state: MessagesState):
         return {"messages": state["messages"]}
 
     match = (
-    re.search(r'<function=([a-zA-Z0-9_\-]+)\s*(\{[\s\S]*?\})?>', content) or
-    re.search(r'<function=([a-zA-Z0-9_\-]+)(\{[\s\S]*?\})<\/function>', content)
-)
+        re.search(r'<function=([a-zA-Z0-9_\-]+)\s*(\{[\s\S]*?\})?>', content) or
+        re.search(r'<function=([a-zA-Z0-9_\-]+)(\{[\s\S]*?\})<\/function>', content)
+    )
     if not match:
         return state
 
@@ -145,16 +159,14 @@ def reasoner(state: MessagesState, config: RunnableConfig):
         print(f"[Reasoner] Groq tool call failed. Attempting manual normalization...")
         print(f"[Reasoner] Failed generation: {failed_gen}")
 
-        # Try to salvage the broken XML tool call Groq generated    
         match = re.search(r'<function=([a-zA-Z0-9_\-]+)\s*(\{[\s\S]*?\})?>', failed_gen)
 
         if not match:
-            # Also try the format WITHOUT space: <function=name{...}</function>
             match = re.search(r'<function=([a-zA-Z0-9_\-]+)(\{[\s\S]*?\})<\/function>', failed_gen)
 
         if match:
             tool_name = match.group(1)
-            args_raw  = match.group(2) if match.lastindex >= 2 else None
+            args_raw = match.group(2) if match.lastindex >= 2 else None
             try:
                 args = json.loads(args_raw) if args_raw else {}
             except Exception:
@@ -190,39 +202,38 @@ workflow.add_node("synthesizer", synthesizer_node)
 
 workflow.set_entry_point("complexity_detector")
 workflow.add_conditional_edges("complexity_detector", route_after_detection, {
-    "agent": "agent", 
-    "planner": "planner"      
+    "agent": "agent",
+    "planner": "planner"
 })
 
 workflow.add_edge("agent", "normalize")
-workflow.add_conditional_edges("normalize", tools_condition) #tools condition is pre defined if the normalize node send a tool call it understnand and call the tool.
+workflow.add_conditional_edges("normalize", tools_condition)  # tools condition is pre defined if the normalize node send a tool call it understands and calls the tool.
 workflow.add_edge("tools", "agent")
 
 workflow.add_edge("planner", "executor")
 workflow.add_conditional_edges("executor", route_after_executor, {
-    "executor": "executor",     
-    "synthesizer": "synthesizer" 
+    "executor": "executor",
+    "synthesizer": "synthesizer"
 })
-workflow.add_edge("synthesizer", END) 
+workflow.add_edge("synthesizer", END)
 agent_app = workflow.compile()
 
 def extract_citations(tool_text: str):
     citations = []
     if not tool_text: return citations
-    
+
     current_snippet = "Web Research Source"
-    
+
     for line in tool_text.split('\n'):
         line = line.strip()
         if line.startswith('SNIPPET::'):
             current_snippet = line.replace('SNIPPET::', '').strip()
         elif line.startswith('SOURCE_URL::'):
             url = line.replace('SOURCE_URL::', '').strip()
-            # Append immediately so we don't overwrite it!
             if url and not any(c['url'] == url for c in citations):
                 citations.append({'url': url, 'snippet': current_snippet})
-            current_snippet = "Web Research Source" # Reset for the next one
-            
+            current_snippet = "Web Research Source"
+
     return citations
 
 def grade_answer(question: str, answer: str) -> str:
@@ -237,25 +248,21 @@ def grade_answer(question: str, answer: str) -> str:
         result = llm.invoke([HumanMessage(content=grader_prompt)])
         verdict = result.content.strip().lower()
         print(f"DEBUG: Answer grader verdict: '{verdict}'")
-        # Guard against the LLM adding extra words
         return 'relevant' if verdict == 'relevant' else 'not_relevant'
     except Exception as e:
         print(f"DEBUG: Grader failed: {e}")
         return 'relevant'
-    
+
 @router.get("/memories")
 async def get_user_memories(authorization: Optional[str] = Header(None)):
     try:
         user_id, username = verify_token(authorization)
-        memories_data = mem_client.get_all(user_id=user_id)
-        
-        # Mem0 returns a slightly complex dictionary. We just want to extract 
-        # the ID, the readable text, and the date it was created.
+        # CHANGE 3: All 4 mem_client usages replaced with get_mem_client()
+        memories_data = get_mem_client().get_all(user_id=user_id)
+
         clean_memories = []
-        
-        # Handle different versions of Mem0 response formats
         raw_memories = memories_data.get("results", memories_data) if isinstance(memories_data, dict) else memories_data
-        
+
         if raw_memories:
             for mem in raw_memories:
                 clean_memories.append({
@@ -263,9 +270,9 @@ async def get_user_memories(authorization: Optional[str] = Header(None)):
                     "text": mem.get("memory", "Unknown memory format"),
                     "date": mem.get("updated_at") or mem.get("created_at")
                 })
-                
+
         return {"status": "success", "memories": clean_memories}
-        
+
     except Exception as e:
         print(f"DEBUG: Error fetching memories: {e}")
         return {"status": "error", "message": str(e)}
@@ -275,16 +282,16 @@ async def get_user_memories(authorization: Optional[str] = Header(None)):
 async def delete_user_memory(memory_id: str, authorization: Optional[str] = Header(None)):
     try:
         user_id, username = verify_token(authorization)
-        mem_client.delete(memory_id=memory_id)
+        get_mem_client().delete(memory_id=memory_id)  # CHANGE 3 (cont.)
         return {"status": "success", "message": "Memory erased."}
-        
+
     except Exception as e:
         print(f"DEBUG: Error deleting memory: {e}")
         return {"status": "error", "message": str(e)}
-    
+
 
 @router.get("/conversations")
-async def get_conversations(authorization: Optional[str] = Header(None)): #telling that look only in header(header can be none too), it can be or can not be present. if not, dont crash.
+async def get_conversations(authorization: Optional[str] = Header(None)):
     """Fetches a list of all chat histories for the logged-in user."""
     user_id, username = verify_token(authorization)
     conversations = db.get_conversations(user_id)
@@ -298,7 +305,7 @@ async def create_conversation(authorization: Optional[str] = Header(None)):
     if conv_id:
         return {"conversation_id": conv_id, "message": "Conversation created"}
     raise HTTPException(status_code=500, detail="Failed to create conversation")
-    
+
 @router.get("/conversations/{conversation_id}")
 async def get_conversation(conversation_id: str, authorization: Optional[str] = Header(None)):
     """Loads all the messages inside a specific chat thread."""
@@ -321,17 +328,17 @@ async def delete_conversation(conversation_id: str, authorization: Optional[str]
 async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Header(None)):
     user_id, username = verify_token(authorization)
     user_query = request.message
-    conv_id = request.conversation_id 
+    conv_id = request.conversation_id
 
     if not conv_id:
         conv_id = db.create_conversation(user_id)
         if not conv_id:
             raise HTTPException(status_code=500, detail="Failed to create conversation")
 
-    #  Memory Retrieval: Ask Mem0 if it knows anything relevant about this user
+    # Memory Retrieval: Ask Mem0 if it knows anything relevant about this user
     memories = []
     try:
-        search_results = mem_client.search(query=user_query, user_id=user_id, limit=3)
+        search_results = get_mem_client().search(query=user_query, user_id=user_id, limit=3)  # CHANGE 3 (cont.)
         if search_results:
             raw = search_results if isinstance(search_results, list) else search_results.get("results", [])
             for mem in raw:
@@ -342,35 +349,30 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     except Exception as e:
         print(f"DEBUG: Memory Error: {e}")
 
-    # 1. Grab the user's toggles from the request (default to True if empty)
     tools_allowed = request.tools_allowed if hasattr(request, 'tools_allowed') and request.tools_allowed else {}
     kb_allowed = tools_allowed.get("search_knowledge_base", True)
     web_allowed = tools_allowed.get("web_search", True)
 
-    # 2. Dynamically build the tool instructions list
     tool_instructions = []
-    
+
     if kb_allowed:
         tool_instructions.append("- 'search_knowledge_base' — use this for ANY question about personal info, uploaded documents, or what you know about the user.")
-    
+
     if web_allowed:
         tool_instructions.append("- 'web_search' — use ONLY for current events, news, real-time information, weather, prices.")
-    
-    # We will assume time is always available since it doesn't cost tokens/API limits
+
     tool_instructions.append("- 'get_current_time' — returns current date and time.")
 
-    # 3. Construct the base prompt based on what is active
     if kb_allowed or web_allowed:
         base_prompt = (
             "You are a helpful assistant.\n"
             "You have the following tools available:\n"
-            f"{chr(10).join(tool_instructions)}\n" # chr(10) is just a clean way to write '\n' inside an f-string
+            f"{chr(10).join(tool_instructions)}\n"
             "STRICT RULES:\n"
             "- Call each tool AT MOST ONCE per user question.\n"
             "- Once you have tool results, answer immediately. Do NOT search again."
         )
     else:
-        # If the user turned EVERYTHING off, explicitly tell the AI to behave like a normal chatbot
         base_prompt = (
             "You are a helpful assistant.\n"
             "The user has explicitly DISABLED all external search tools and document retrieval.\n"
@@ -383,42 +385,40 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
         SYSTEM_PROMPT = base_prompt
 
     input_messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_query)]
-    
-    # 5. Execution: Run the LangGraph AI (with the Secret Tunnel for Data Privacy!)
+
     try:
         final_state = agent_app.invoke(
             {"messages": input_messages},
-            config={"configurable": {"user_id": user_id}} #this allows us to pass variables , we can use this in any tool without giving this info to llm.
+            config={"configurable": {"user_id": user_id}}
         )
-        
+
         ai_response = final_state["messages"][-1].content
         citations = extract_citations(final_state["messages"])
         quality = grade_answer(user_query, ai_response)
         print(f"DEBUG: Citations found: {len(citations)}, Quality: {quality}")
 
-       
         try:
             db.add_message_to_conversation(conv_id, user_id, user_query, ai_response)
         except Exception as conv_err:
             print(f"DEBUG: Failed to save to SQL: {conv_err}")
-        
-        # Save Long-Term Memory (to Mem0/Qdrant for future AI context)
+
         try:
-            mem_client.add(user_id=user_id, messages=[{"role": "user", "content": user_query}, {"role": "assistant", "content": ai_response}])
+            get_mem_client().add(user_id=user_id, messages=[{"role": "user", "content": user_query}, {"role": "assistant", "content": ai_response}])  # CHANGE 3 (cont.)
         except Exception as mem_err:
             print(f"DEBUG: Failed to save to Mem0: {mem_err}")
-        
-        return {"response": ai_response,
-                 "conversation_id": conv_id,
-                 "citations": citations,        # e.g. [{"url": "...", "snippet": "..."}]
-                }
-        
+
+        return {
+            "response": ai_response,
+            "conversation_id": conv_id,
+            "citations": citations,
+        }
+
     except Exception as e:
         error_msg = str(e)
         if "rate_limit" in error_msg.lower() or "413" in error_msg:
             return {"response": "I am thinking too hard. Please wait 30 seconds."}
         return {"response": f"System Error: {error_msg}"}
-    
+
 
 @router.post("/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str] = Header(None)):
@@ -433,7 +433,7 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
 
     memories = []
     try:
-        search_results = mem_client.search(query=user_query, user_id=user_id, limit=3)
+        search_results = get_mem_client().search(query=user_query, user_id=user_id, limit=3)  # CHANGE 3 (cont.)
         if search_results:
             raw = search_results if isinstance(search_results, list) else search_results.get("results", [])
             for mem in raw:
@@ -447,10 +447,10 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
     web_allowed = tools_allowed.get("web_search", True)
 
     tool_instructions = []
-    
+
     if kb_allowed:
         tool_instructions.append("- 'search_knowledge_base' — use this for ANY question about personal info, uploaded documents, or what you know about the user.")
-    
+
     if web_allowed:
         tool_instructions.append("- 'web_search' — use ONLY for current events, news, real-time information, weather, prices.")
 
@@ -467,7 +467,7 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
             "- For highly volatile real-time data, ALWAYS use the web_search tool. Do NOT guess.\n"
             "- Once you have tool results, answer the user's question directly and concisely. Add a maximum of 1 or 2 lines of extra context. DO NOT write long essays or paragraphs.\n"
             "- CRITICAL: DO NOT output any raw 'SOURCE_URL::' tags or raw URLs in your response text. The system extracts those automatically in the background.\n"
-            "- CRITICAL: When tool results are present in the conversation, you MUST base your answer ONLY on those results. NEVER override tool results with, your training knowledge. If a tool says X, your answer must say X."
+            "- CRITICAL: When tool results are present in the conversation, you MUST base your answer ONLY on those results. NEVER override tool results with your training knowledge. If a tool says X, your answer must say X."
             "- SUGGESTIONS: At the very end of your response, ALWAYS add exactly 1 suggested follow-up question. Format it EXACTLY like this (NO spaces inside the asterisks):\n\n"
             "**Try searching for:**\n"
             "[Your Question Here]\n"
@@ -479,10 +479,9 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
             "You must answer strictly based on your internal knowledge and the conversation history."
         )
 
-
     SYSTEM_PROMPT = (
         f"{base_prompt}\n\nCONTEXT FROM PREVIOUS CONVERSATIONS:\n"
-        + "\n".join("- " + m for m in memories) 
+        + "\n".join("- " + m for m in memories)
         + "\n\nUse this context ONLY if relevant. DO NOT repeat old answers."
         if memories else base_prompt
     )
@@ -503,14 +502,13 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
 
     input_messages.append(HumanMessage(content=user_query))
 
-    # This is the generator function that generates SSE (Server-Sent Events)chunks
     async def generate():
-        full_response = ""  # We accumulate the full response to save to DB after stream ends
+        full_response = ""
         tool_outputs = {}
         try:
             tools_allowed = request.tools_allowed or {}
             target_file = getattr(request, 'target_file', 'all') or 'all'
-            # astream_events fires events for EVERY node in the LangGraph
+
             async for event in agent_app.astream_events(
                 {"messages": input_messages},
                 config={
@@ -520,9 +518,9 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                         "target_file": target_file
                     }
                 },
-                version="v2" 
+                version="v2"
             ):
-                if event["event"] == "on_chain_start": #"on_chain_start" comes when a node start executing
+                if event["event"] == "on_chain_start":
                     node_name = event.get("name", "")
 
                     if node_name == "complexity_detector":
@@ -532,7 +530,6 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                         yield f"data: {json.dumps({'status': 'Thinking'})}\n\n"
 
                     elif node_name == "executor":
-                        # Read which tool is about to run from the event's input state
                         input_data = event.get("data", {}).get("input", {})
                         plan = input_data.get("plan", [])
                         step_index = input_data.get("current_step_index", 0)
@@ -550,14 +547,13 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
 
                     elif node_name == "synthesizer":
                         yield f"data: {json.dumps({'status': 'synthesizing'})}\n\n"
-                        
-                # fires the moment a tool starts — before results come back ──
+
                 if event["event"] == "on_tool_start":
                     full_response = ""
                     tool_name = event.get("name", "")
 
                     if tool_name == "web_search":
-                        yield f"data: {json.dumps({'status': 'searching_web'})}\n\n" #its like yield sends what happend and then pauses until something happen again
+                        yield f"data: {json.dumps({'status': 'searching_web'})}\n\n"
 
                     elif tool_name == "search_knowledge_base":
                         yield f"data: {json.dumps({'status': 'searching_kb'})}\n\n"
@@ -570,33 +566,25 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                     tool_output = event["data"].get("output", "")
                     if hasattr(tool_output, 'content'):
                         tool_output = tool_output.content
-                    tool_outputs[tool_name] = tool_output 
+                    tool_outputs[tool_name] = tool_output
 
-
-                # on_chat_model_stream fires for every token the LLM generates,each event is type of dicteg.{"event": "on_chat_model_stream","data": {content,...}}
                 if event["event"] == "on_chat_model_stream":
                     node_name = event.get("metadata", {}).get("langgraph_node", "")
                     if node_name not in ("agent", "synthesizer"):
                         continue
                     chunk = event["data"]["chunk"]
 
-                    # Skip tool-call chunks (when model is deciding to call a tool)
-                    # tool_call_chunks are intermediate reasoning, not the final answer
                     if chunk.tool_call_chunks:
                         continue
 
-                    # Only stream actual text tokens
                     if chunk.content:
                         token = chunk.content
                         full_response += token
                         yield f"data: {json.dumps({'token': token, 'conv_id': conv_id})}\n\n"
 
-
             citations = extract_citations(tool_outputs.get('web_search', ''))
 
-            # quality = grade_answer(user_query, full_response)
-
-            yield f"data: {json.dumps({'done': True, 'conv_id': conv_id, 'citations': citations,})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'conv_id': conv_id, 'citations': citations})}\n\n"
 
             try:
                 db.add_message_to_conversation(conv_id, user_id, user_query, full_response)
@@ -604,7 +592,7 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
                 print(f"DEBUG: Failed to save to SQL: {e}")
 
             try:
-                mem_client.add(
+                get_mem_client().add(  # CHANGE 3 (cont.)
                     user_id=user_id,
                     messages=[
                         {"role": "user", "content": user_query},

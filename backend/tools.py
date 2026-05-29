@@ -22,12 +22,13 @@ _reranker = None
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        print("[Models] Loading embedding model...")
-        from langchain_huggingface import HuggingFaceEmbeddings
-        _embedding_model = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        print("[Models] Loading remote HF embedding model...")
+        from langchain_huggingface import HuggingFaceEndpointEmbeddings
+        _embedding_model = HuggingFaceEndpointEmbeddings(
+            model="sentence-transformers/all-MiniLM-L6-v2",
+            huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN")
         )
-        print("[Models] Embedding model ready.")
+        print("[Models] Remote embedding model ready.")
     return _embedding_model
 
 def get_sparse_model():
@@ -39,16 +40,15 @@ def get_sparse_model():
         print("[Models] Sparse model ready.")
     return _sparse_model
 
-def get_reranker():
-    global _reranker
-    if _reranker is None:
-        print("[Models] Loading reranker model...")
-        from sentence_transformers import CrossEncoder
-        _reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')  # classification model (act as grader and gives score)
-        print("[Models] Reranker ready.")
-    return _reranker
+# def get_reranker():
+#     global _reranker
+#     if _reranker is None:
+#         print("[Models] Loading reranker model...")
+#         from sentence_transformers import CrossEncoder
+#         _reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')  # classification model (act as grader and gives score)
+#         print("[Models] Reranker ready.")
+#     return _reranker
 
-# -----------------------------
 
 class SearchKBInput(BaseModel):
     query: str = Field(description="The exact search query to look up in the documents.")
@@ -109,21 +109,13 @@ def search_knowledge_base(query: str, config: RunnableConfig):
             )
             
         search_filter = models.Filter(must=must_conditions)
-        initial_results = vector_db.similarity_search(query, k=15, filter=search_filter)  # this also gives us the list[documents].
+        initial_results = vector_db.similarity_search(query, k=5, filter=search_filter)  # this also gives us the list[documents].
         
         if not initial_results:
             return "No relevant information found in the documents."
-        
-        print(f"DEBUG: Stage 1 found {len(initial_results)} snippets. Re-ranking...")
 
-        query_doc_pairs = [[query, doc.page_content] for doc in initial_results]
-        scores = get_reranker().predict(query_doc_pairs)  # reranker fetched lazily
-        scored_docs = list(zip(initial_results, scores))
-        scored_docs.sort(key=lambda x: x[1], reverse=True)
-        top_3_docs = scored_docs[:3]
-
-        print(f"DEBUG: Top snippet score after re-ranking: {top_3_docs[0][1]:.2f}")  # value:.2f helps us to see only 2 digits after decimal.
-        context = "\n\n".join([f"Snippet: {doc[0].page_content}" for doc in top_3_docs])
+        print(f"DEBUG: Found {len(initial_results)} snippets. Returning top 5...")
+        context = "\n\n".join([f"Snippet: {doc.page_content}" for doc in initial_results[:5]])
         return context
 
     except Exception as e:

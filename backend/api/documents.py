@@ -22,12 +22,13 @@ _sparse_model = None
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        print("[Models] Loading embedding model (documents)...")
-        from langchain_huggingface import HuggingFaceEmbeddings
-        _embedding_model = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        print("[Models] Loading remote HF embedding model...")
+        from langchain_huggingface import HuggingFaceEndpointEmbeddings
+        _embedding_model = HuggingFaceEndpointEmbeddings(
+            model="sentence-transformers/all-MiniLM-L6-v2",
+            huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN")
         )
-        print("[Models] Embedding model ready.")
+        print("[Models] Remote embedding model ready.")
     return _embedding_model
 
 def get_sparse_model():

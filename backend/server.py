@@ -2,7 +2,13 @@ print("1 - server.py started")
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import auth,documents,chat
+print("before auth")
+from api import auth
+print("before documents")
+from api import documents
+print("before chat")
+from api import chat
+print("all imports done")
 print("2 - imports complete")
 app = FastAPI()
 print("3 - FastAPI app created")

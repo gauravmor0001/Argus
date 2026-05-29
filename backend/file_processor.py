@@ -207,7 +207,7 @@ def process_and_ingest_document(file_obj,filename,embedding_model,sparse_embeddi
             sparse_embedding=sparse_embedding_model, # Generates BM25 keywords for each chunk
             retrieval_mode=RetrievalMode.HYBRID,
             url=os.getenv("qdrant_url"),
-            api_key=os.getenv("qdrant_cloud_key") 
+            api_key=os.getenv("qdrant_cloud_key"),
             # force_recreate=True, #delete the db and recreate it (true)
             collection_name="learning-rag"
         )

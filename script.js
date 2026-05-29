@@ -33,7 +33,7 @@ function showMainInterface() {
 async function loadConversations() {
     console.log('loadConversations called, currentConversationId:', currentConversationId); 
     try {
-        const response = await fetch('http://127.0.0.1:5000/conversations', {
+        const response = await fetch('https://argus-75th.onrender.com/conversations', {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         
@@ -122,7 +122,7 @@ function createConversationGroup(title, conversations) {
 async function loadConversation(convId) {
     try {
         toggleWelcomeScreen(false);
-        const response = await fetch(`http://127.0.0.1:5000/conversations/${convId}`, {
+        const response = await fetch(`https://argus-75th.onrender.com/conversations/${convId}`, {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         
@@ -157,7 +157,7 @@ async function deleteConversation(convId) {
     if (!confirm('Delete this conversation?')) return;
     
     try {
-        const response = await fetch(`http://127.0.0.1:5000/conversations/${convId}`, {
+        const response = await fetch(`https://argus-75th.onrender.com/conversations/${convId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
@@ -299,7 +299,7 @@ async function sendMessage() {
         const targetFile = toolsAllowed.search_knowledge_base 
             ? document.getElementById('file-target-selector').value 
             : "all";
-        const response = await fetch('http://127.0.0.1:5000/chat/stream', {
+        const response = await fetch('https://argus-75th.onrender.com/chat/stream', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -495,7 +495,7 @@ document.addEventListener("DOMContentLoaded", () => {
         errorElement.style.color = '#3498db';
         
         try {
-            const response = await fetch('http://127.0.0.1:5000/login', {
+            const response = await fetch('https://argus-75th.onrender.com/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
@@ -535,7 +535,7 @@ document.addEventListener("DOMContentLoaded", () => {
         errorElement.style.color = '#3498db';
         
         try {
-            const response = await fetch('http://127.0.0.1:5000/register', {
+            const response = await fetch('https://argus-75th.onrender.com/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
@@ -620,7 +620,7 @@ async function uploadFile() {
     formData.append('file', file);
 
     try {
-        const response = await fetch('http://127.0.0.1:5000/upload-doc', {
+        const response = await fetch('https://argus-75th.onrender.com/upload-doc', {
             method: 'POST',
             headers: {  
                 'Authorization': `Bearer ${authToken}`
@@ -664,7 +664,7 @@ async function loadUserFiles() {
     fileList.innerHTML = '<p style="text-align: center; color: #888;">Loading files...</p>';
 
     try {
-        const response = await fetch('http://127.0.0.1:5000/files', {
+        const response = await fetch('https://argus-75th.onrender.com/files', {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         
@@ -711,7 +711,7 @@ async function deleteFile(fileId) {
     if (!confirm("Are you sure? This will delete the file and remove its knowledge from the AI.")) return;
 
     try {
-        const response = await fetch(`http://127.0.0.1:5000/files/${fileId}`, {
+        const response = await fetch(`https://argus-75th.onrender.com/files/${fileId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
@@ -748,7 +748,7 @@ async function loadUserMemories() {
     memoryList.innerHTML = '<p style="text-align: center; color: #888;">Accessing long-term memory...</p>';
 
     try {
-        const response = await fetch('http://127.0.0.1:5000/memories', {
+        const response = await fetch('https://argus-75th.onrender.com/memories', {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         
@@ -797,7 +797,7 @@ async function deleteMemory(memoryId) {
     if (!confirm("Are you sure? Argus will permanently forget this fact about you.")) return;
 
     try {
-        const response = await fetch(`http://127.0.0.1:5000/memories/${memoryId}`, {
+        const response = await fetch(`https://argus-75th.onrender.com/memories/${memoryId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
@@ -824,7 +824,7 @@ async function updateFileDropdown() {
     if (!authToken) return;
 
     try {
-        const response = await fetch('http://127.0.0.1:5000/files', {
+        const response = await fetch('https://argus-75th.onrender.com/files', {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
         

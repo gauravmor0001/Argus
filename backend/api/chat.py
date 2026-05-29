@@ -1,3 +1,4 @@
+print("chat.py loading")
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, Field
 from typing import Optional

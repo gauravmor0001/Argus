@@ -1,3 +1,4 @@
+print("file_processor.py loading")
 import os
 import shutil #used for high level file operations.
 import fitz  # pymupdf — extracts images from PDF pages

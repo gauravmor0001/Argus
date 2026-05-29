@@ -1,3 +1,4 @@
+print("documents.py loading")
 from fastapi import APIRouter, File, UploadFile, Header
 from typing import Optional
 from langchain_huggingface import HuggingFaceEmbeddings

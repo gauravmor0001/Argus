@@ -1,11 +1,11 @@
+print("1 - server.py started")
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from api import auth,documents,chat
-
+print("2 - imports complete")
 app = FastAPI()
-
+print("3 - FastAPI app created")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -1,36 +1,60 @@
 print("documents.py loading")
 from fastapi import APIRouter, File, UploadFile, Header
 from typing import Optional
-from langchain_huggingface import HuggingFaceEmbeddings
 from file_processor import process_and_ingest_document
 from api.auth import verify_token
-from langchain_qdrant import FastEmbedSparse
 from database import UserDatabase
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 import os
+
 router = APIRouter()
 db = UserDatabase()
-embedding_model = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
-sparse_embedding_model = FastEmbedSparse(
-    model_name="Qdrant/bm25"
-)
+
+# --- LAZY MODEL SINGLETONS ---
+# Models are NOT loaded at import time.
+# They are loaded the first time /upload-doc is actually called.
+# This allows uvicorn to bind the port instantly, fixing the Render deployment issue.
+
+_embedding_model = None
+_sparse_model = None
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        print("[Models] Loading embedding model (documents)...")
+        from langchain_huggingface import HuggingFaceEmbeddings
+        _embedding_model = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+        print("[Models] Embedding model ready.")
+    return _embedding_model
+
+def get_sparse_model():
+    global _sparse_model
+    if _sparse_model is None:
+        print("[Models] Loading sparse embedding model (documents)...")
+        from langchain_qdrant import FastEmbedSparse
+        _sparse_model = FastEmbedSparse(model_name="Qdrant/bm25")
+        print("[Models] Sparse model ready.")
+    return _sparse_model
+
+# -----------------------------
 
 @router.post("/upload-doc")
 async def upload_and_ingest(
-    file: UploadFile=File(...), #here the "file:" is the variable name the frontend is sending(should match the fronted)-> formData.append("file", selectedFile);
-    authorization: Optional[str]=Header(None) #this checks if authorization(metadata header in http) is present or not.if yes user is loged in.the authorization string looks like "Bearer ....."this is a JWT.
+    file: UploadFile=File(...),  # here the "file:" is the variable name the frontend is sending(should match the fronted)-> formData.append("file", selectedFile);
+    authorization: Optional[str]=Header(None)  # this checks if authorization(metadata header in http) is present or not.if yes user is loged in.the authorization string looks like "Bearer ....."this is a JWT.
     ):
         try:
-            user_id, username=verify_token(authorization)
+            user_id, username = verify_token(authorization)
 
-            success,message=process_and_ingest_document(
+            # Models are fetched lazily here — loaded only on first actual upload call
+            success, message = process_and_ingest_document(
                 file_obj=file.file,
                 filename=file.filename,
-                embedding_model=embedding_model,
-                sparse_embedding_model=sparse_embedding_model,
+                embedding_model=get_embedding_model(),
+                sparse_embedding_model=get_sparse_model(),
                 user_id=user_id
             )
             if success:

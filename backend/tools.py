@@ -2,20 +2,54 @@ from datetime import datetime
 from langchain_core.tools import tool
 from langchain_tavily import TavilySearch 
 import wikipedia
-from langchain_qdrant import QdrantVectorStore, FastEmbedSparse, RetrievalMode
-from langchain_huggingface import HuggingFaceEmbeddings
-from sentence_transformers import CrossEncoder 
-from langchain_core.runnables import RunnableConfig #secure back channel
-from qdrant_client.http import models #we can not simply say filter using user_id to qdrant, so to make the format of the filter we require this.
+from langchain_qdrant import QdrantVectorStore, RetrievalMode
+from langchain_core.runnables import RunnableConfig  # secure back channel
+from qdrant_client.http import models  # we can not simply say filter using user_id to qdrant, so to make the format of the filter we require this.
 from api.web_search import execute_web_research
 from api.research import run_deep_research
 from pydantic import BaseModel, Field
 import os
-embedding_model = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
-sparse_embedding_model = FastEmbedSparse(model_name="Qdrant/bm25")
-reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2') #classification model (act as grader and gives score)
+
+# --- LAZY MODEL SINGLETONS ---
+# Models are NOT loaded at import time.
+# They are loaded the first time they are actually needed (on first tool call).
+# This allows uvicorn to bind the port instantly, fixing the Render deployment issue.
+
+_embedding_model = None
+_sparse_model = None
+_reranker = None
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        print("[Models] Loading embedding model...")
+        from langchain_huggingface import HuggingFaceEmbeddings
+        _embedding_model = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+        print("[Models] Embedding model ready.")
+    return _embedding_model
+
+def get_sparse_model():
+    global _sparse_model
+    if _sparse_model is None:
+        print("[Models] Loading sparse embedding model...")
+        from langchain_qdrant import FastEmbedSparse
+        _sparse_model = FastEmbedSparse(model_name="Qdrant/bm25")
+        print("[Models] Sparse model ready.")
+    return _sparse_model
+
+def get_reranker():
+    global _reranker
+    if _reranker is None:
+        print("[Models] Loading reranker model...")
+        from sentence_transformers import CrossEncoder
+        _reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')  # classification model (act as grader and gives score)
+        print("[Models] Reranker ready.")
+    return _reranker
+
+# -----------------------------
+
 class SearchKBInput(BaseModel):
     query: str = Field(description="The exact search query to look up in the documents.")
 
@@ -49,9 +83,10 @@ def search_knowledge_base(query: str, config: RunnableConfig):
     print(f"DEBUG: Searching Knowledge Base for: '{query}', user: {user_id}, target_file: {target_file}")
     
     try:
+        # Models are fetched lazily here — loaded only on first actual search call
         vector_db = QdrantVectorStore.from_existing_collection(
-            embedding=embedding_model,
-            sparse_embedding=sparse_embedding_model,
+            embedding=get_embedding_model(),
+            sparse_embedding=get_sparse_model(),
             retrieval_mode=RetrievalMode.HYBRID,
             url=os.getenv("qdrant_url"),         
             api_key=os.getenv("qdrant_cloud_key"),
@@ -74,7 +109,7 @@ def search_knowledge_base(query: str, config: RunnableConfig):
             )
             
         search_filter = models.Filter(must=must_conditions)
-        initial_results = vector_db.similarity_search(query, k=15, filter=search_filter) #this also gives us the list[documents].
+        initial_results = vector_db.similarity_search(query, k=15, filter=search_filter)  # this also gives us the list[documents].
         
         if not initial_results:
             return "No relevant information found in the documents."
@@ -82,12 +117,12 @@ def search_knowledge_base(query: str, config: RunnableConfig):
         print(f"DEBUG: Stage 1 found {len(initial_results)} snippets. Re-ranking...")
 
         query_doc_pairs = [[query, doc.page_content] for doc in initial_results]
-        scores = reranker.predict(query_doc_pairs)
+        scores = get_reranker().predict(query_doc_pairs)  # reranker fetched lazily
         scored_docs = list(zip(initial_results, scores))
         scored_docs.sort(key=lambda x: x[1], reverse=True)
         top_3_docs = scored_docs[:3]
 
-        print(f"DEBUG: Top snippet score after re-ranking: {top_3_docs[0][1]:.2f}") #value:.2f helps us to see only 2 digits after decimal.
+        print(f"DEBUG: Top snippet score after re-ranking: {top_3_docs[0][1]:.2f}")  # value:.2f helps us to see only 2 digits after decimal.
         context = "\n\n".join([f"Snippet: {doc[0].page_content}" for doc in top_3_docs])
         return context
 
@@ -114,7 +149,7 @@ def academic_research(topic: str) -> str:
         f"Just output this text:\n\n{report}"
     )
 
-tools_list = [get_current_time , web_search,search_knowledge_base,academic_research]
+tools_list = [get_current_time, web_search, search_knowledge_base, academic_research]
 
-#we have not given user_id to llm as to protect from prompt injection attack.as llm fills out the parameter of search_knowledge_base when the tool is called.
-#so we use config={"configurable": {"user_id": user_id}}
+# we have not given user_id to llm as to protect from prompt injection attack. as llm fills out the parameter of search_knowledge_base when the tool is called.
+# so we use config={"configurable": {"user_id": user_id}}

@@ -54,7 +54,7 @@ def search_knowledge_base(query: str, config: RunnableConfig):
             sparse_embedding=sparse_embedding_model,
             retrieval_mode=RetrievalMode.HYBRID,
             url=os.getenv("qdrant_url"),         
-            api_key=os.getenv("qdrant_cloud_key")
+            api_key=os.getenv("qdrant_cloud_key"),
             collection_name="learning-rag"
         )
         

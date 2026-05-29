@@ -11,7 +11,8 @@ from langchain_core.documents import Document #this is used in langchain so that
 
 
 # Only needed if Tesseract isn't in your PATH automatically
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+if os.name == "nt":
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 def extract_images_and_ocr(pdf_path: str, user_id: str) -> list[Document]:
     """

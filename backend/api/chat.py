@@ -62,7 +62,7 @@ mem0_config = {
         "provider": "gemini",
         "config": {
             "api_key": os.getenv("GEMINI_API_KEY"),
-            "model": "models/text-embedding-004"
+            "model": "text-embedding-004" 
         }
     },
     "llm": {  # decide what mem0 will remember about user and its preferences.

@@ -108,7 +108,7 @@ def search_knowledge_base(query: str, config: RunnableConfig):
                 )
             )
             
-        search_filter = models.Filter(must=must_conditions)
+        search_results = get_mem_client().search(query=user_query, filters={"user_id": user_id}, limit=3)
         initial_results = vector_db.similarity_search(query, k=5, filter=search_filter)  # this also gives us the list[documents].
         
         if not initial_results:

@@ -143,9 +143,18 @@ def reasoner(state: MessagesState, config: RunnableConfig):
     last_message = state["messages"][-1]
 
     if hasattr(last_message, 'type') and last_message.type == 'tool':
-        print("DEBUG: Tools just finished. Disarming for synthesis.")
-        bound_llm = llm
-    elif active_tools:
+        print("DEBUG: Tools just finished. Forcing synthesis.")
+        # Build a LOCAL list — does NOT modify state
+        synthesis_messages = list(state["messages"]) + [
+            HumanMessage(content=(
+                "The tool has returned its results above. "
+                "Now answer my original question using only those results. "
+                "Do NOT call any more tools."
+            ))
+        ]
+        response = llm.invoke(synthesis_messages)  # bare llm, no tools bound
+        return {"messages": [response]}       
+    if active_tools:
         print(f"DEBUG: Binding tools: {[t.name for t in active_tools]}")
         bound_llm = llm.bind_tools(active_tools)
     else:
@@ -259,8 +268,7 @@ def grade_answer(question: str, answer: str) -> str:
 async def get_user_memories(authorization: Optional[str] = Header(None)):
     try:
         user_id, username = verify_token(authorization)
-        # CHANGE 3: All 4 mem_client usages replaced with get_mem_client()
-        memories_data = get_mem_client().get_all(user_id=user_id)
+        memories_data = get_mem_client().get_all(filters={"user_id": user_id})
 
         clean_memories = []
         raw_memories = memories_data.get("results", memories_data) if isinstance(memories_data, dict) else memories_data
@@ -581,6 +589,8 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
 
                     if chunk.content:
                         token = chunk.content
+                        if '<function=' in token:  # catch any leaked tool call XML
+                            continue
                         full_response += token
                         yield f"data: {json.dumps({'token': token, 'conv_id': conv_id})}\n\n"
 

@@ -62,7 +62,8 @@ mem0_config = {
         "provider": "gemini",
         "config": {
             "api_key": os.getenv("GEMINI_API_KEY"),
-            "model": "text-embedding-004" 
+            "model": "gemini-embedding-001",  # FIXED: Using Google's active 2026 model
+            "embedding_dims": 768             # FIXED: Matches your Qdrant collection size
         }
     },
     "llm": {  # decide what mem0 will remember about user and its preferences.

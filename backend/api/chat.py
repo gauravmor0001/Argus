@@ -59,10 +59,10 @@ mem0_config = {
         "Store the memories concisely in the third person (e.g., 'User is building an AI chatbot')."
     ),
     "embedder": {
-        "provider": "huggingface",
+        "provider": "gemini",
         "config": {
-            "api_key": os.getenv("HUGGINGFACEHUB_API_TOKEN"),
-            "model": "sentence-transformers/all-MiniLM-L6-v2"
+            "api_key": os.getenv("GEMINI_API_KEY"),
+            "model": "models/embedding-001"
         }
     },
     "llm": {  # decide what mem0 will remember about user and its preferences.

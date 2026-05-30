@@ -55,10 +55,9 @@ class SearchKBInput(BaseModel):
     query: str = Field(description="The exact search query to look up in the documents.")
 
 @tool
-def get_current_time():
-    """Get the current real-time date and time."""
-   return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
-
+def get_current_time() -> str:
+    """Returns the current date and time."""
+    return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
 @tool
 def web_search(query: str):
     """

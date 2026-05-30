@@ -62,7 +62,7 @@ mem0_config = {
         "provider": "gemini",
         "config": {
             "api_key": os.getenv("GEMINI_API_KEY"),
-            "model": "models/embedding-001"
+            "model": "models/text-embedding-004"
         }
     },
     "llm": {  # decide what mem0 will remember about user and its preferences.
@@ -73,11 +73,12 @@ mem0_config = {
         }
     },
     "vector_store": {
-        "provider": "qdrant",       # FIXED: was "chroma", now correctly "qdrant"
+        "provider": "qdrant",       
         "config": {
-            "collection_name": "argus_memory",
+            "collection_name": "argus_memory_gemini", 
             "url": os.getenv("qdrant_url"),
-            "api_key": os.getenv("qdrant_cloud_key")
+            "api_key": os.getenv("qdrant_cloud_key"),
+            "embedding_model_dims": 768 
         }
     }
 }

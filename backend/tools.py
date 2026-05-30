@@ -9,6 +9,7 @@ from api.web_search import execute_web_research
 from api.research import run_deep_research
 from pydantic import BaseModel, Field
 import os
+from zoneinfo import ZoneInfo
 
 # --- LAZY MODEL SINGLETONS ---
 # Models are NOT loaded at import time.
@@ -56,7 +57,7 @@ class SearchKBInput(BaseModel):
 @tool
 def get_current_time():
     """Get the current real-time date and time."""
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+   return datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
 
 @tool
 def web_search(query: str):

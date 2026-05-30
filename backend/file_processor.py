@@ -15,6 +15,28 @@ from langchain_core.documents import Document #this is used in langchain so that
 if os.name == "nt":
     pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as qdrant_models
+
+def ensure_qdrant_indexes():
+    """Called after collection is created to guarantee indexes exist."""
+    try:
+        client = QdrantClient(
+            url=os.getenv("qdrant_url"),
+            api_key=os.getenv("qdrant_cloud_key")
+        )
+        for field in ["metadata.user_id", "metadata.filename", "metadata.source"]:
+            try:
+                client.create_payload_index(
+                    collection_name="learning-rag",
+                    field_name=field,
+                    field_schema=qdrant_models.PayloadSchemaType.KEYWORD
+                )
+            except Exception:
+                pass  # already exists, fine
+    except Exception as e:
+        print(f"[Qdrant] Index setup failed: {e}")
+
 def extract_images_and_ocr(pdf_path: str, user_id: str) -> list[Document]:
     """
     Opens a PDF with pymupdf, finds every embedded image on every page,
@@ -212,6 +234,7 @@ def process_and_ingest_document(file_obj,filename,embedding_model,sparse_embeddi
             # force_recreate=True, #delete the db and recreate it (true)
             collection_name="learning-rag"
         )
+        ensure_qdrant_indexes()
         has_ocr = any(s.metadata.get("source_type") in ("image_ocr", "scanned_page_ocr") for s in splits)
         msg = f"Successfully processed '{filename}'! Ingested {len(splits)} chunks"
         if has_ocr:

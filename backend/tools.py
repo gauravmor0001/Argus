@@ -108,8 +108,11 @@ def search_knowledge_base(query: str, config: RunnableConfig):
                 )
             )
             
-        search_results = get_mem_client().search(query=user_query, filters={"user_id": user_id}, limit=3)
-        initial_results = vector_db.similarity_search(query, k=5, filter=search_filter)  # this also gives us the list[documents].
+        # FIXED: Actually construct the filter object from the conditions
+        search_filter = models.Filter(must=must_conditions)
+        
+        # FIXED: Removed the accidental get_mem_client() line that was crashing this tool
+        initial_results = vector_db.similarity_search(query, k=5, filter=search_filter)
         
         if not initial_results:
             return "No relevant information found in the documents."
@@ -120,6 +123,7 @@ def search_knowledge_base(query: str, config: RunnableConfig):
 
     except Exception as e:
         return f"Error searching documents: {str(e)}"
+
 
 @tool
 def academic_research(topic: str) -> str:

@@ -340,7 +340,7 @@ async def chat_endpoint(request: ChatRequest, authorization: Optional[str] = Hea
     # Memory Retrieval: Ask Mem0 if it knows anything relevant about this user
     memories = []
     try:
-        search_results = get_mem_client().search(query=user_query, user_id=user_id, limit=3)  # CHANGE 3 (cont.)
+        search_results = get_mem_client().search(query=user_query, filters={"user_id": user_id}, limit=3)
         if search_results:
             raw = search_results if isinstance(search_results, list) else search_results.get("results", [])
             for mem in raw:
@@ -435,7 +435,7 @@ async def chat_stream_endpoint(request: ChatRequest, authorization: Optional[str
 
     memories = []
     try:
-        search_results = get_mem_client().search(query=user_query, user_id=user_id, limit=3)  # CHANGE 3 (cont.)
+        search_results = get_mem_client().search(query=user_query, filters={"user_id": user_id}, limit=3)
         if search_results:
             raw = search_results if isinstance(search_results, list) else search_results.get("results", [])
             for mem in raw:

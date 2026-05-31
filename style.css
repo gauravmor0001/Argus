@@ -566,7 +566,7 @@ header {
     display: flex;
     flex-direction: column;
     background-color: #bed1e9;
-    border-radius: 44px;
+    border-radius: 30px;
     margin-top: 15px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     border: 1px solid transparent;
@@ -718,12 +718,13 @@ header {
     margin-bottom: 40px; /* Gives nice breathing room above the input box */
     font-family: inherit;
     width: 100%;
+    margin-top:120px;
 }
 
 .greeting-text {
     font-size: 2.5rem;
     font-weight: 600;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0px;
 
     /* A sleek gradient matching modern AI UIs */
     background: linear-gradient(90deg, #4285f4, #d96570);

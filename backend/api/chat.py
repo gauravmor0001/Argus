@@ -56,6 +56,7 @@ mem0_config = {
         "3. Current projects they are working on (e.g., 'building a RAG system'). "
         "4. Specific preferences (e.g., 'keep answers short', 'prefers dark mode'). "
         "Ignore general knowledge questions, greetings, and file summaries. "
+        "Ignore what user is searhing for, just the things that helps us to know about user more"
         "Store the memories concisely in the third person (e.g., 'User is building an AI chatbot')."
     ),
     "embedder": {
